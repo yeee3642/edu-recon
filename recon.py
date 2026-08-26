@@ -90,16 +90,36 @@ def _print_summary(run) -> None:
             print(f"  [{f.severity:>8}] {f.category:<14} {f.title}  {str(ev)[:70]}")
 
 
+def _pip_install(pkgs: list[str]) -> bool:
+    """pip install with graceful fallbacks (PEP 668 / no venv)."""
+    base = [sys.executable, "-m", "pip", "install", "-q"]
+    for extra in ([], ["--user"], ["--user", "--break-system-packages"]):
+        rc = subprocess.run(base + extra + pkgs).returncode
+        if rc == 0:
+            return True
+    return False
+
+
 def cmd_setup(args) -> int:
     cfg = _load_cfg(args)
     tp = os.path.join(ROOT, "third_party")
     os.makedirs(tp, exist_ok=True)
+
+    # 1) Python-based scanners + php-cgi-Injector runtime deps — one pip shot,
+    #    cross-platform (these work on Windows too).
+    pips = ["sqlmap", "dirsearch", "requests", "requests-tor", "chardet",
+            "urllib3", "rich"]
+    print(f"[+] pip install: {' '.join(pips)}")
+    if not _pip_install(pips):
+        print("[!] pip install failed — try inside a venv:")
+        print("    python -m venv .venv && . .venv/bin/activate  (Win: .venv\\Scripts\\activate)")
+
+    # 2) Git tools that ship as scripts
     repos = [
-        ("php-cgi-Injector", "https://github.com/Night-have-dreams/php-cgi-Injector.git",
-         ["requests", "requests-tor", "chardet", "urllib3", "rich"]),
-        ("wp2shell", "https://github.com/xAL6/wp2shell.git", []),
+        ("php-cgi-Injector", "https://github.com/Night-have-dreams/php-cgi-Injector.git"),
+        ("wp2shell", "https://github.com/xAL6/wp2shell.git"),
     ]
-    for name, url, pips in repos:
+    for name, url in repos:
         dest = os.path.join(tp, name)
         if os.path.isdir(os.path.join(dest, ".git")):
             print(f"[=] {name} present, pulling…")
@@ -107,14 +127,30 @@ def cmd_setup(args) -> int:
         else:
             print(f"[+] cloning {name}")
             subprocess.run(["git", "clone", "--depth", "1", url, dest], check=False)
-        if pips:
-            print(f"[+] pip install for {name}: {' '.join(pips)}")
-            subprocess.run([sys.executable, "-m", "pip", "install", "-q", *pips], check=False)
-    print("\n[i] External scanners (install via your distro / go):")
-    print("    nmap sqlmap hydra dirsearch   # apt install ...")
-    print("    subfinder dalfox              # go install ... (optional)")
+
+    # 3) Native scanners we can't pip-install — print exact per-OS commands
+    _print_native_hints()
     cmd_doctor(args)
     return 0
+
+
+def _print_native_hints() -> None:
+    import shutil
+    need = [t for t in ("nmap", "hydra") if not shutil.which(t)]
+    if not need:
+        print("\n[i] native scanners (nmap/hydra) already present.")
+    else:
+        print(f"\n[i] still need native tool(s): {', '.join(need)}")
+        if sys.platform.startswith("linux"):
+            print(f"    sudo apt install -y {' '.join(need)}        # Debian/Kali/Ubuntu")
+        elif sys.platform == "darwin":
+            print(f"    brew install {' '.join(need)}")
+        elif sys.platform.startswith("win"):
+            print("    nmap : https://nmap.org/download (Windows installer)")
+            print("    hydra: use WSL/Kali (no clean native Windows build)")
+    if not shutil.which("dalfox") or not shutil.which("subfinder"):
+        print("[i] optional (Go): go install github.com/hahwul/dalfox/v2@latest ; "
+              "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest")
 
 
 def cmd_doctor(args) -> int:

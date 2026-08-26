@@ -8,4 +8,5 @@ third_party/
 *.log
 _smoke.py
 _remote_test.sh
+_bootstrap_test.sh
 targets.txt
