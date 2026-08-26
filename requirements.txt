@@ -1,0 +1,13 @@
+# edu-recon core is Python stdlib only (3.10+). Nothing here is strictly required.
+
+# Optional: richer nested config.yaml parsing. Without it a minimal built-in
+# parser handles the shipped flat config.yaml fine.
+PyYAML>=6.0
+
+# php-cgi-Injector runtime deps are installed automatically by:
+#   python recon.py setup
+# (requests, requests-tor, chardet, urllib3, rich)
+#
+# External scanners are NOT pip packages — install them via your distro / go:
+#   nmap sqlmap hydra dirsearch          (apt / pkg)
+#   subfinder dalfox                     (go install, optional)

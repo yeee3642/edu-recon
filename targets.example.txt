@@ -1,0 +1,11 @@
+# edu-recon targets — one per line. Only in-scope, authorized hosts.
+# Supported forms:
+#   10.0.0.0/24                 CIDR  -> nmap -sn ping sweep, each live host scanned
+#   lab.school.edu.tw           domain -> subdomains enumerated + scanned
+#   portal.school.edu.tw        host
+#   https://portal.school.edu.tw/app/   URL (scheme/port/path preserved)
+#   192.168.10.20:8080          host:port
+
+# 10.0.0.0/24
+# lab.school.edu.tw
+# https://portal.school.edu.tw

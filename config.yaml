@@ -1,0 +1,60 @@
+# edu-recon configuration. All keys are optional; anything omitted uses the
+# built-in default (see edurecon/config.py). Values below mirror the defaults.
+
+# --- global ---
+intensity: full          # full | recon | passive
+concurrency: 4           # targets scanned in parallel
+http_timeout: 12
+
+# --- tool binaries (auto-discovered on PATH if left as a bare name) ---
+nmap_bin: nmap
+dirsearch_bin: dirsearch
+sqlmap_bin: sqlmap
+hydra_bin: hydra
+subfinder_bin: subfinder
+dalfox_bin: dalfox
+
+# --- cloned script tools (populated by: python recon.py setup) ---
+# phpcgi_dir: third_party/php-cgi-Injector
+# wp2shell_dir: third_party/wp2shell
+phpcgi_python: python3
+wp2shell_python: python3
+phpcgi_bypass: true       # --bypass WAF evasion for CVE-2024-4577 probe
+
+# --- nmap ---
+nmap_top_ports: 1000      # set 0 for a full -p- scan
+nmap_min_rate: 1500
+nmap_vuln_scripts: true   # --script vuln (CVE hints)
+
+# --- subdomain expansion ---
+subdomain_enabled: true
+subdomain_allow_scope: true   # authorize *.domain for every listed domain
+subdomain_use_crtsh: true
+subdomain_max: 200
+
+# --- web discovery / crawl ---
+web_extensions: php,asp,aspx,jsp,html,txt,zip,tar.gz,sql,bak,json,env,git
+web_threads: 25
+crawl_max_pages: 40
+crawl_max_targets: 40
+
+# --- secrets / API-key leak scanning ---
+secret_scan: true
+api_doc_probe: true
+secrets_max_assets: 60
+
+# --- injection ---
+sqlmap_level: 2
+sqlmap_risk: 1
+sqlmap_crawl: 2
+sqlerr_quickpass: true
+xss_enabled: true
+xss_builtin: true
+
+# --- weak password (hydra) ---
+hydra_tasks: 4            # low to avoid account lockout
+hydra_stop_on_first: true
+hydra_services: [ssh, ftp, rdp, mysql, postgres, vnc, smb, telnet, redis]
+
+# --- scope safety: extra networks authorized beyond the target file ---
+extra_allowed_cidrs: []
