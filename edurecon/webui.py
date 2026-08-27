@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import ssl
+import urllib.request
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -11,6 +14,28 @@ from .config import Config
 from .engine import Engine
 from .report import write_reports
 from .store import RunStore
+
+_DUMP_MAX = 8 * 1024 * 1024        # 8 MiB cap per dumped resource
+_DUMP_CTX = ssl.create_default_context()
+_DUMP_CTX.check_hostname = False
+_DUMP_CTX.verify_mode = ssl.CERT_NONE
+
+
+def _raw_fetch(url: str):
+    """Fetch a URL's raw bytes (no TLS verify), following redirects. -> (bytes, ctype, err)."""
+    req = urllib.request.Request(url, headers={"User-Agent": "edu-recon-dump"})
+    try:
+        resp = urllib.request.urlopen(req, timeout=20, context=_DUMP_CTX)
+        return resp.read(_DUMP_MAX), (resp.headers.get("Content-Type") or ""), None
+    except Exception as e:                       # HTTPError / URLError / timeout
+        return b"", "", f"{type(e).__name__}: {e}"
+
+
+def _dump_slug(url: str) -> str:
+    u = urlparse(url)
+    base = (u.netloc + u.path).replace("\\", "/")
+    base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("_") or "resource"
+    return base[:120]
 
 
 def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
@@ -108,7 +133,55 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
             m = re.match(r"^/api/runs/([^/]+)/finding$", p)
             if m:
                 return self._toggle_finding(m.group(1), self._body_json())
+            m = re.match(r"^/api/runs/([^/]+)/dump$", p)
+            if m:
+                return self._dump(m.group(1), self._body_json())
             return self._send(404, {"error": "not found"})
+
+        def _run_hosts(self, rid) -> set:
+            """Hosts the run is authorized against — the dump allowlist."""
+            hosts: set[str] = set()
+            d = self._run_dict(rid) or {}
+            for t in d.get("targets", []):
+                if t.get("host"):
+                    hosts.add(t["host"])
+                bu = t.get("base_url") or ""
+                if bu:
+                    h = urlparse(bu).hostname
+                    if h:
+                        hosts.add(h)
+            return hosts
+
+        def _dump(self, rid, body):
+            """Immediately capture a leaked resource server-side, before it vanishes.
+
+            Scope-locked: only URLs whose host was a target of THIS run may be
+            dumped. Saved raw under runs/<rid>/dumps/ so it survives take-down.
+            """
+            url = (body.get("url") or "").strip()
+            if not url.lower().startswith(("http://", "https://")):
+                return self._send(400, {"error": "bad url"})
+            host = urlparse(url).hostname or ""
+            if host not in self._run_hosts(rid):
+                return self._send(403, {"error": f"out of scope: {host!r} not a target of this run"})
+            data, ctype, err = _raw_fetch(url)
+            if err:
+                return self._send(502, {"error": f"fetch failed (already taken down?): {err}"})
+            dump_dir = os.path.join(cfg.workdir, rid, "dumps")
+            os.makedirs(dump_dir, exist_ok=True)
+            stamp = datetime.now().strftime("%H%M%S")
+            fn = f"{stamp}_{_dump_slug(url)}"
+            full = os.path.join(dump_dir, fn)
+            n = 1
+            while os.path.exists(full):
+                fn = f"{stamp}_{_dump_slug(url)}.{n}"; full = os.path.join(dump_dir, fn); n += 1
+            with open(full, "wb") as fh:
+                fh.write(data)
+            return self._send(200, {
+                "ok": True, "saved": "dumps/" + fn, "size": len(data),
+                "content_type": ctype, "truncated": len(data) >= _DUMP_MAX,
+                "preview": data[:4096].decode("utf-8", "replace"),
+            })
 
         def _toggle_finding(self, rid, body):
             run = store.get(rid)
@@ -227,6 +300,10 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
  .btn.primary:hover{filter:brightness(1.07)}
  .btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
  .btn.ghost{background:transparent}
+ .btn.dump{border-color:#7a4a12;color:#ffb454}.btn.dump:hover{border-color:#ffb454;background:#251803}
+ .btn.dump.done{border-color:var(--ok);color:var(--ok)}
+ #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(18px);background:#0f1826;border:1px solid var(--acc);color:var(--fg);padding:9px 16px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;z-index:80;box-shadow:0 12px 34px -10px #000;pointer-events:none;max-width:70vw}
+ #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
  .icobtn{background:transparent;border:1px solid var(--line);border-radius:8px;color:var(--mut);width:30px;height:30px;display:grid;place-items:center}
  .icobtn:hover{color:var(--fg);border-color:var(--acc)}
  hr{border:none;border-top:1px solid var(--line);margin:16px 0}
@@ -384,6 +461,11 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
 <script>
 const ORDER={critical:4,high:3,medium:2,low:1,info:0};
 const SEVW={critical:100,high:40,medium:12,low:3,info:0};
+const LEAK_CATS=new Set(['vcs-leak','secret-leak','backup-leak','info-leak','api-leak','admin-panel','dir-listing']);
+function dumpable(f){const ev=f.evidence||{};return LEAK_CATS.has(f.category)&&!!ev.url;}
+function fmtSize(n){return n<1024?n+'B':n<1048576?(n/1024).toFixed(1)+'K':(n/1048576).toFixed(1)+'M';}
+function toast(msg){let el=document.getElementById('toast');if(!el){el=document.createElement('div');el.id='toast';document.body.appendChild(el);}
+ el.textContent=msg;el.className='show';clearTimeout(window._tt);window._tt=setTimeout(()=>{el.className='';},2800);}
 let CUR=null,DTIMER=null,LTIMER=null,RTIMER=null;
 let FILT=new Set(['critical','high','medium','low','info']);
 let LOGIDX=0,LOCK=true,LAST=null,MRID=null,MCMD='';
@@ -427,6 +509,7 @@ function renderDetail(d){const s=d.summary||{},sv=s.severity||{};const done=['do
   <span class="kv">intensity <b>${esc((d.options||{}).intensity||'')}</b> · ${s.targets||0} 標的 · ${s.findings||0} findings</span>
   <span class="spacer" style="flex:1"></span>
   <button class="btn sm" onclick="cancelRun()" ${done?'disabled':''}>Cancel</button>
+  <button class="btn sm dump" onclick="dumpAll()" title="立刻抓存所有洩漏,免得被下架">⤓ Dump 全部洩漏</button>
   <button class="btn sm primary" onclick="mkReport()">匯出報告</button></div>
   <div class="chips">${chips}</div>`;
  const tg=(d.targets||[]).slice().sort((a,b)=>score(b)-score(a));
@@ -446,7 +529,7 @@ function renderTarget(rid,t){const stages=Object.values(t.stages||{});
    <td><div>${esc(f.title)}</div>
      <details class="ev"><summary>evidence ▾</summary><div class="evbody">${esc(JSON.stringify(ev,null,2))}</div>${arts?`<div class="arts">${arts}</div>`:''}</details></td>
    <td>${prim?`<code>${esc((''+prim).slice(0,120))}</code>`:'<span class="muted">—</span>'}</td>
-   <td><button class="btn sm ghost" onclick="fp('${rid}','${f.id}',${!f.false_positive})">${f.false_positive?'↺ 復原':'標 FP'}</button></td></tr>`;}).join('');
+   <td>${dumpable(f)?`<button class="btn sm dump" onclick="dumpLeak('${rid}','${encodeURIComponent(ev.url)}',this)" title="伺服器端立刻抓存這個洩漏">⤓ Dump</button> `:''}<button class="btn sm ghost" onclick="fp('${rid}','${f.id}',${!f.false_positive})">${f.false_positive?'↺':'FP'}</button></td></tr>`;}).join('');
  const ports=(t.services||[]).map(x=>x.port+'/'+esc(x.name||'?')).join(' · ')||'—';
  return `<div class="card tgt"><div class="tgthead">
    <span class="host">${esc(t.host)}</span>
@@ -460,6 +543,22 @@ function renderTarget(rid,t){const stages=Object.values(t.stages||{});
 function tgl(k){FILT.has(k)?FILT.delete(k):FILT.add(k);if(LAST)renderDetail(LAST);}
 async function cancelRun(){if(!CUR)return;await api('POST','/api/runs/'+CUR+'/cancel');refreshDetail();}
 async function fp(rid,fid,v){await api('POST','/api/runs/'+rid+'/finding',{finding_id:fid,false_positive:v});refreshDetail();}
+/* ---- leak dump (capture-now, server-side) ---- */
+async function dumpLeak(rid,encurl,btn){const url=decodeURIComponent(encurl);
+ if(btn){btn.disabled=true;btn.textContent='dumping…';}
+ const r=await api('POST','/api/runs/'+rid+'/dump',{url});
+ if(r&&r.ok){if(btn){btn.textContent='✓ '+fmtSize(r.size);btn.classList.add('done');btn.disabled=false;}
+   toast('已抓存 '+r.saved+' ('+fmtSize(r.size)+')');
+   openArtifact(rid,encodeURIComponent(r.saved));return true;}
+ if(btn){btn.textContent='✗ 失敗';btn.disabled=false;}
+ toast((r&&r.error)||'dump 失敗（可能已被下架）');return false;}
+async function dumpAll(){if(!CUR||!LAST)return;const urls=[];
+ for(const t of (LAST.targets||[]))for(const f of (t.findings||[]))if(!f.false_positive&&dumpable(f))urls.push((f.evidence||{}).url);
+ const uniq=[...new Set(urls)].filter(Boolean);
+ if(!uniq.length)return toast('沒有可 dump 的 leak');
+ toast('dumping '+uniq.length+' 個 leak…');let ok=0,sz=0;
+ for(const u of uniq){const r=await api('POST','/api/runs/'+CUR+'/dump',{url:u});if(r&&r.ok){ok++;sz+=r.size||0;}}
+ toast('已抓存 '+ok+'/'+uniq.length+' 個 leak（'+fmtSize(sz)+'）→ runs/'+CUR+'/dumps/');}
 async function mkReport(){if(!CUR)return;const r=await api('POST','/api/runs/'+CUR+'/report');
  if(r&&r.report&&r.report.html)window.open('/api/runs/'+CUR+'/artifact?path='+encodeURIComponent(r.report.html),'_blank');
  else alert('報告尚未就緒');}
