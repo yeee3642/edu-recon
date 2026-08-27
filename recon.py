@@ -177,6 +177,34 @@ def cmd_payout(args) -> int:
     return 0
 
 
+def cmd_repro(args) -> int:
+    cfg = _load_cfg(args)
+    rj = os.path.join(cfg.workdir, args.run_id, "run.json")
+    if not os.path.exists(rj):
+        print(f"run not found: {rj}", file=sys.stderr)
+        return 2
+    import json
+    from edurecon import repro
+    with open(rj, "r", encoding="utf-8") as fh:
+        d = json.load(fh)
+    scripts = repro.scripts_for_run(d)
+    if args.finding:
+        scripts = [s for s in scripts if s["id"] == args.finding]
+    out_dir = args.out
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    for s in scripts:
+        if out_dir:
+            path = os.path.join(out_dir, s["filename"])
+            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(s["script"])
+            print(f"[+] {path}")
+        else:
+            print(f"\n===== {s['filename']}  ({s['severity']} {s['cve'] or s['category']}) =====")
+            print(s["script"])
+    return 0
+
+
 def cmd_doctor(args) -> int:
     cfg = _load_cfg(args)
     print("\n[tool availability]")
@@ -233,6 +261,13 @@ def main() -> int:
                        help="legal payout routing for a run's confirmed findings")
     s.add_argument("run_id", help="run id under the workdir (e.g. run-YYYYmmdd-HHMMSS)")
     s.set_defaults(func=cmd_payout)
+
+    s = sub.add_parser("repro", parents=[common],
+                       help="generate reproduction PoC scripts for a run's confirmed findings")
+    s.add_argument("run_id", help="run id under the workdir")
+    s.add_argument("--finding", help="only this finding id")
+    s.add_argument("--out", help="write scripts to this dir instead of stdout")
+    s.set_defaults(func=cmd_repro)
 
     args = ap.parse_args()
     return args.func(args)
