@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -85,13 +86,27 @@ class RunStore:
             run.logs.append(f"{stamp} {msg}")
 
     def save(self, run: Run) -> None:
-        path = os.path.join(self.run_dir(run.id), "run.json")
-        tmp = path + ".tmp"
+        run_dir = self.run_dir(run.id)
+        path = os.path.join(run_dir, "run.json")
+        # Serialize the whole write+replace: concurrent target pipelines all call
+        # save() for the same run, and on Windows a shared tmp name + racing
+        # os.replace() raises PermissionError [WinError 32], FATAL-ing a target.
+        # Unique tmp per writer + lock + retry makes it atomic and safe.
+        tmp = os.path.join(run_dir, f".run.{os.getpid()}.{threading.get_ident()}.tmp")
         with self.lock:
             data = run.to_dict()
-        with open(tmp, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, path)
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+            for _ in range(6):
+                try:
+                    os.replace(tmp, path)
+                    return
+                except PermissionError:
+                    time.sleep(0.05)   # a reader briefly holds run.json; retry
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 
     def load_existing(self) -> None:
         """Reload prior runs (status only; targets stay as saved dicts view)."""
