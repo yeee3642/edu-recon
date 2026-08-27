@@ -87,6 +87,8 @@ class Engine:
             cfg.intensity = options["intensity"]
         if options.get("concurrency"):
             cfg.concurrency = int(options["concurrency"])
+        if options.get("scope_enforce") is not None:
+            cfg.scope_enforce = bool(options["scope_enforce"])
         return cfg
 
     def _execute(self, run: Run, raw_targets: list[str], options: dict,
@@ -106,7 +108,8 @@ class Engine:
                 log(f"skip target {line!r}: {e}")
 
         guard = ScopeGuard(cfg.extra_allowed_cidrs,
-                           allow_subdomains=cfg.subdomain_allow_scope)
+                           allow_subdomains=cfg.subdomain_allow_scope,
+                           enforce=cfg.scope_enforce)
         for pt in parsed:
             guard.add(pt)
 

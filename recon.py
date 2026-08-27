@@ -154,6 +154,29 @@ def _print_native_hints() -> None:
               "go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest")
 
 
+def cmd_payout(args) -> int:
+    cfg = _load_cfg(args)
+    rj = os.path.join(cfg.workdir, args.run_id, "run.json")
+    if not os.path.exists(rj):
+        print(f"run not found: {rj}", file=sys.stderr)
+        return 2
+    import json
+    from edurecon import payout
+    with open(rj, "r", encoding="utf-8") as fh:
+        d = json.load(fh)
+    ds = payout.directives_for_run(d)
+    print(f"# 付現指令 — {args.run_id}  ({len(ds)} confirmed)")
+    print(f"# {payout.LEGAL}\n")
+    for x in ds:
+        L = x["lanes"]
+        print(f"[{x['severity']:>8}] {x['target']} — {x['finding']}  ({x['cve'] or x['software']})")
+        print(f"    現況: {x['cash_now']}")
+        print(f"    A 委託: {L['A_engagement']}")
+        print(f"    B 賞金: {L['B_inscope_bounty']}")
+        print(f"    C 上游: {L['C_upstream_novel']}\n")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     cfg = _load_cfg(args)
     print("\n[tool availability]")
@@ -171,6 +194,12 @@ def cmd_doctor(args) -> int:
 
 
 def main() -> int:
+    # Chinese output must not crash on a non-UTF-8 Windows console (cp950/Big5).
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", help="path to config.yaml / config.json")
     common.add_argument("--workdir", help="override run output directory")
@@ -199,6 +228,11 @@ def main() -> int:
     s = sub.add_parser("doctor", parents=[common],
                        help="check external tool availability")
     s.set_defaults(func=cmd_doctor)
+
+    s = sub.add_parser("payout", parents=[common],
+                       help="legal payout routing for a run's confirmed findings")
+    s.add_argument("run_id", help="run id under the workdir (e.g. run-YYYYmmdd-HHMMSS)")
+    s.set_defaults(func=cmd_payout)
 
     args = ap.parse_args()
     return args.func(args)

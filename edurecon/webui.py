@@ -15,6 +15,7 @@ from .engine import Engine
 from .report import write_reports
 from .store import RunStore
 from . import gitdump
+from . import payout as _payout
 
 _DUMP_MAX = 8 * 1024 * 1024        # 8 MiB cap per dumped resource
 _DUMP_CTX = ssl.create_default_context()
@@ -110,6 +111,11 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
             m = re.match(r"^/api/runs/([^/]+)/logs$", p)
             if m:
                 return self._serve_logs(m.group(1), parse_qs(u.query))
+            m = re.match(r"^/api/runs/([^/]+)/payout$", p)
+            if m:
+                d = self._run_dict(m.group(1))
+                return self._send(200 if d else 404,
+                                  _payout.directives_for_run(d) if d else {"error": "not found"})
             m = re.match(r"^/api/runs/([^/]+)$", p)
             if m:
                 d = self._run_dict(m.group(1))
@@ -125,7 +131,8 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
                 if not targets:
                     return self._send(400, {"error": "no targets"})
                 opts = {"intensity": body.get("intensity", cfg.intensity),
-                        "concurrency": body.get("concurrency", cfg.concurrency)}
+                        "concurrency": body.get("concurrency", cfg.concurrency),
+                        "scope_enforce": body.get("scope_enforce")}
                 run = engine.start_run(targets, opts)
                 return self._send(200, {"id": run.id})
             m = re.match(r"^/api/runs/([^/]+)/cancel$", p)
@@ -504,6 +511,7 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
      <option value="passive">passive — 被動盤點</option>
     </select>
    </div>
+   <label style="display:flex;gap:7px;align-items:center;margin:10px 0 4px;color:var(--mut);font-size:12px;cursor:pointer"><input type="checkbox" id="demomode" style="width:auto"> demo 模式（不鎖範圍・掃你貼的任何標的）</label>
    <div class="field two">
     <div><p class="lbl">併發</p><input id="conc" type="number" min="1" max="32" value="4"></div>
     <div style="display:flex;align-items:flex-end"><button class="btn primary" style="width:100%" onclick="startRun()">開始掃描</button></div>
@@ -570,7 +578,7 @@ async function loadRuns(){const rs=await api('GET','/api/runs');const el=documen
 /* ---- start ---- */
 async function startRun(){const t=document.getElementById('targets').value;
  if(!t.trim())return alert('請貼上 target');
- const r=await api('POST','/api/runs',{targets:t,intensity:document.getElementById('intensity').value,concurrency:+document.getElementById('conc').value});
+ const r=await api('POST','/api/runs',{targets:t,intensity:document.getElementById('intensity').value,concurrency:+document.getElementById('conc').value,scope_enforce:!document.getElementById('demomode').checked});
  if(r&&r.id){selectRun(r.id);loadRuns();}else alert((r&&r.error)||'error');}
 /* ---- select + polling ---- */
 function selectRun(id){CUR=id;LOGIDX=0;clearConsole();loadRuns();
@@ -594,6 +602,7 @@ function renderDetail(d){const s=d.summary||{},sv=s.severity||{};const done=['do
   <span class="spacer" style="flex:1"></span>
   <button class="btn sm" onclick="cancelRun()" ${done?'disabled':''}>Cancel</button>
   <button class="btn sm dump" onclick="dumpAll()" title="立刻抓存所有洩漏,免得被下架">⤓ Dump 全部洩漏</button>
+  <button class="btn sm" onclick="showPayout()" title="每筆 confirmed 的合法付現路由">💰 付現指令</button>
   <button class="btn sm primary" onclick="mkReport()">匯出報告</button></div>
   <div class="chips">${chips}</div>`;
  const tg=(d.targets||[]).slice().sort((a,b)=>score(b)-score(a));
@@ -640,6 +649,22 @@ async function dumpLeak(rid,fid,btn){
    toast(msg);openArtifact(rid,encodeURIComponent(r.saved));return true;}
  if(btn){btn.textContent='✗ 失敗';btn.disabled=false;}
  toast((r&&r.error)||'dump 失敗（可能已被下架）');return false;}
+async function showPayout(){if(!CUR)return;const ds=await api('GET','/api/runs/'+CUR+'/payout');
+ const sel=document.getElementById('martsel');sel.style.display='none';sel.innerHTML='';MCMD='';
+ document.getElementById('mttl').textContent='付現指令 — '+CUR;
+ const arr=Array.isArray(ds)?ds:[];
+ let h='<div class="meta">'+(arr.length?arr.length+' 筆 confirmed':'無 confirmed finding')+'</div>';
+ if(arr.length&&arr[0].legal)h+='<div class="prompt">⚖ '+esc(arr[0].legal)+'</div>';
+ for(const x of arr){const L=x.lanes||{};
+   h+='<div style="margin:12px 0;border-top:1px solid #17212f;padding-top:8px">';
+   h+='<div class="prompt">['+esc(x.severity)+'] '+esc(x.target)+' — <b>'+esc(x.finding)+'</b> ('+esc(x.cve||x.software)+')</div>';
+   h+='<div>現況: '+esc(x.cash_now||'')+'</div>';
+   h+='<div>A 委託: '+esc(L.A_engagement||'')+'</div>';
+   h+='<div>B 賞金: '+esc(L.B_inscope_bounty||'')+'</div>';
+   h+='<div>C 上游: '+esc(L.C_upstream_novel||'')+'</div>';
+   h+='</div>';}
+ document.getElementById('sbody').innerHTML=h;
+ document.getElementById('modal').classList.add('show');}
 async function dumpAll(){if(!CUR||!LAST)return;const ids=[];
  for(const t of (LAST.targets||[]))for(const f of (t.findings||[]))if(!f.false_positive&&dumpable(f))ids.push(f.id);
  const uniq=[...new Set(ids)];

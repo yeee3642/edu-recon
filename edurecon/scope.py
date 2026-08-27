@@ -95,11 +95,12 @@ class ScopeGuard:
     """
 
     def __init__(self, extra_cidrs: list[str] | None = None,
-                 allow_subdomains: bool = True) -> None:
+                 allow_subdomains: bool = True, enforce: bool = True) -> None:
         self.networks: list[ipaddress._BaseNetwork] = []
         self.hostnames: set[str] = set()      # exact hostnames
         self.domains: set[str] = set()         # apex/parent domains for *.suffix match
         self.allow_subdomains = allow_subdomains
+        self.enforce = enforce                 # False => demo mode, scan anything you type
         for c in (extra_cidrs or []):
             try:
                 self.networks.append(ipaddress.ip_network(c, strict=False))
@@ -132,6 +133,8 @@ class ScopeGuard:
         return any(h == d or h.endswith("." + d) for d in self.domains)
 
     def check(self, host: str) -> None:
+        if not self.enforce:
+            return                            # demo mode: operator owns authorization
         if not self.is_allowed(host):
             raise ScopeError(
                 f"OUT OF SCOPE: {host!r} is not in the target file / allowed CIDRs. "
