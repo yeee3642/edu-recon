@@ -163,6 +163,20 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
             m = re.match(r"^/api/runs/([^/]+)/dump$", p)
             if m:
                 return self._dump(m.group(1), self._body_json())
+            m = re.match(r"^/api/runs/([^/]+)/dumps/clear$", p)
+            if m:
+                import shutil as _sh
+                dd = os.path.join(cfg.workdir, m.group(1), "dumps")
+                n = 0
+                if os.path.isdir(dd):
+                    for name in os.listdir(dd):
+                        pth = os.path.join(dd, name)
+                        try:
+                            _sh.rmtree(pth) if os.path.isdir(pth) else os.remove(pth)
+                            n += 1
+                        except OSError:
+                            pass
+                return self._send(200, {"ok": True, "cleared": n})
             return self._send(404, {"error": "not found"})
 
         def _run_hosts(self, rid) -> set:
@@ -463,11 +477,22 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
  .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(16px);background:#101010;border:1px solid var(--y);color:var(--fg);padding:9px 16px;font-size:12px;opacity:0;transition:.25s;z-index:80;max-width:70vw}
  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
  .muted{color:var(--faint)}
+ .demo{display:flex;align-items:center;gap:6px;font-size:9px;letter-spacing:1px;color:var(--mag);border:1px solid rgba(255,61,174,.35);padding:4px 8px;margin-left:2px}
+ .haz{height:2px;flex:none;background:repeating-linear-gradient(45deg,rgba(242,228,9,.55) 0 13px,transparent 13px 26px)}
+ .sens{display:inline-flex;align-items:center;gap:3px;font-size:8px;font-weight:800;letter-spacing:.5px;color:var(--mag);border:1px solid rgba(255,61,174,.4);padding:1px 5px;margin-left:6px}
+ .modetag{font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 8px;border:1px solid}
+ .mt-log{color:var(--blue);border-color:var(--blue)}.mt-dump{color:var(--mag);border-color:var(--mag)}.mt-poc{color:var(--y);border-color:var(--y)}
+ .reveal{cursor:pointer;font-size:9px;color:var(--mag);border:1px solid rgba(255,61,174,.4);padding:2px 7px;margin-left:8px}
+ .shell{clip-path:polygon(0 24px,24px 0,100% 0,100% 100%,0 100%)}
+ .authnote{font-size:9px;color:var(--dim)}
+ @keyframes erhit{0%,100%{box-shadow:0 0 0 0 currentColor}50%{box-shadow:0 0 8px 0 currentColor}}
+ @keyframes erscan{0%{background-position:-40px 0}100%{background-position:40px 0}}
 </style></head>
 <body>
 <div class="app">
  <div class="top">
   <div class="brand"><span class="bdot"></span><span class="btitle">edu-recon</span><span class="bver">v3</span></div>
+  <div class="demo" title="scope-lock 已關,貼什麼掃什麼">◈ DEMO · 不鎖範圍 · scope off</div>
   <div class="topmid">
    <span class="lab">INTENSITY</span><span id="t-int" style="font-size:11px;font-weight:700;color:var(--mag)">FULL</span>
    <span class="vbar"></span>
@@ -492,6 +517,7 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
   <div style="flex:1"></div>
   <div class="tally" id="tally"></div>
  </div>
+ <div class="haz"></div>
  <div class="view"><div class="pane" id="pane"></div></div>
 </div>
 <div id="overlay"></div><div class="toast" id="toast"></div>
@@ -521,8 +547,20 @@ const REMED={cve:'升級受影響元件至修補版本;下架對外 CGI/管理�
 let ST={view:'setup',runId:null,run:null,logs:[],logIdx:0,intensity:'full',
  targetsText:'http://127.0.0.1:8081\nhttp://127.0.0.1:8082',
  sev:new Set(['critical','high','medium','low','info']),statF:'all',q:'',sortBy:'sev',
- openF:null,fmt:'html',opt:{evidence:true,scope:true,rawlog:false,minSev:'low'},
- dtimer:null,ltimer:null,elapsed:0,t0:0};
+ openF:null,fmt:'html',opt:{evidence:true,plaintext:false,scope:true,rawlog:false,minSev:'low'},
+ reveal:new Set(),dumps:{},dtimer:null,ltimer:null,elapsed:0,t0:0};
+const LEAK_CATS=['secret-leak','vcs-leak','backup-leak','admin-panel','dir-listing','info-leak'];
+function isLeak(f){const ev=f.evidence||{};return LEAK_CATS.includes(f.category)&&(ev.url||ev.value);}
+function isSensitive(f){const ev=f.evidence||{};return !!ev.value||['secret-leak','vcs-leak'].includes(f.category)
+ ||/password|secret|token|private key|BEGIN [A-Z ]*PRIVATE/i.test(JSON.stringify(ev));}
+function dumpKind(f){const ev=f.evidence||{};if(/\/\.git($|\/)/i.test(ev.url||''))return 'git';
+ if(f.category==='secret-leak'&&ev.value&&!/\.(env|bak|sql|htpasswd)$/i.test((ev.url||'').replace(/\/$/,'')))return 'key';return 'file';}
+function maskVal(s){s=''+s;if(s.length<=8)return s.slice(0,2)+'•••';const m=s.match(/^(AKIA|ghp_|gho_|xox.-|sk-|eyJ|-----BEGIN)/);
+ return (m?m[1]:s.slice(0,4))+'•••'+s.slice(-4);}
+function maskText(t){return (''+t)
+ .replace(/AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|eyJ[A-Za-z0-9_-]{10,}|[A-Za-z0-9\/+]{28,}={0,2}/g,x=>maskVal(x))
+ .replace(/(password|secret|pass|pwd|token|api[_-]?key)([=:"'\s]+)([^\s"'&,]+)/gi,(_,a,b,c)=>a+b+maskVal(c))
+ .replace(/(root:)[^\n]+/g,'$1x:0:0:••••');}
 function api(m,u,b){const o={method:m,headers:{'Content-Type':'application/json'}};if(b)o.body=JSON.stringify(b);
  return fetch(u,o).then(r=>r.json()).catch(()=>null);}
 function esc(s){return (s==null?'':''+s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
@@ -643,7 +681,7 @@ function vMonitor(){const tg=targets();const c=counts();const done=tg.filter(t=>
      <span style="font-size:8px;font-weight:800;color:${SM[f.severity].c}">${SM[f.severity].k}</span>
      <span style="font-size:9px;color:var(--faint)">CVSS ${SM[f.severity].cvss}</span><span style="flex:1"></span>
      <span style="font-size:8px;color:var(--faint)">${esc((f.evidence||{}).cve||'—')}</span></div>
-    <div style="font-size:11px;color:var(--fg);line-height:1.4">${esc(f.title)}</div>
+    <div style="font-size:11px;color:var(--fg);line-height:1.4">${esc(f.title)}${isSensitive(f)?'<span class="sens">🔒</span>':''}</div>
     <div style="font-size:9px;color:var(--dim);margin-top:3px">${esc(f.host)}</div></div>`).join('')||'<div class="muted" style="padding:20px;font-size:11px">尚無 finding…</div>';
  return `<div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:14px 16px;gap:12px;overflow:hidden">
   <div style="display:flex;gap:10px;flex:none">
@@ -694,16 +732,20 @@ function vFindings(){const c=counts();const list=dispFindings();
   return `<div class="chip ${on?'on':''}" style="border-color:${on?SM[k].c:'var(--line2)'};background:${on?'rgba(150,146,120,.05)':'transparent'}" onclick="togSev('${k}')"><span style="width:8px;height:8px;background:${SM[k].c};opacity:${on?1:.25}"></span>${SM[k].k} <span class="muted">${c[k]||0}</span></div>`;}).join('');
  const statChips=[['all','ALL'],['new','NEW'],['confirmed','CONFIRMED'],['false-positive','FALSE-POS'],['candidate','CANDIDATE']]
   .map(([k,l])=>`<div onclick="ST.statF='${k}';render()" style="cursor:pointer;font-size:10px;letter-spacing:.5px;color:${ST.statF===k?'var(--y)':'var(--faint)'};border-bottom:1px solid ${ST.statF===k?'var(--y)':'transparent'};padding-bottom:2px">${l}</div>`).join('');
- const rows=list.map(f=>{const ev=f.evidence||{};const st=f.stat;
+ const rows=list.map(f=>{const ev=f.evidence||{};const st=f.stat;const sens=isSensitive(f);const rev=ST.reveal.has(f.id);
   const statC={confirmed:'var(--y)','false-positive':'var(--faint)',candidate:'var(--mag)',new:'var(--blue)'}[st];
   const open=ST.openF===f.id;
-  const prim=ev.url||ev.value||ev.reproduce||ev.cgipoint||ev.computed||ev.marker||'';
-  const proof=Object.entries(ev).filter(([k])=>!['reproduce'].includes(k)).map(([k,v])=>`${k}: ${typeof v==='object'?JSON.stringify(v):v}`);
+  const proofRaw=Object.entries(ev).filter(([k])=>k!=='reproduce').map(([k,v])=>`${k}: ${typeof v==='object'?JSON.stringify(v):v}`);
+  const proof=proofRaw.map(p=>(sens&&!rev)?maskText(p):p);
+  const dk=dumpKind(f);const dl={git:'⤓ DUMP .git',key:'⤓ DUMP KEY',file:'⤓ DUMP'}[dk];
+  const ds=ST.dumps[f.id];const dlabel=ds?({dumping:'⟳ DUMPING…',ok:'✓ 已抓存 '+(ds.size||''),fail:'✗ 失敗',oos:'⛔ 越界'}[ds.state]||dl):dl;
+  const revBtn=sens?`<span class="reveal" onclick="event.stopPropagation();togReveal('${f.id}')">${rev?'🙈 遮蔽':'👁 顯示'}</span>`:'';
   const expand=open?`<div class="exp">
     <div style="padding-top:14px">
-     <div style="font-size:10px;color:var(--blue);letter-spacing:1px;margin-bottom:8px">◈ SAFE-CHECK ORACLE · ${esc(ev.mode||f.confidence||'benign')}</div>
+     <div style="font-size:10px;color:var(--blue);letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center">◈ SAFE-CHECK ORACLE · ${esc(ev.mode||f.confidence||'benign')}${revBtn}</div>
      <div style="font-size:10px;color:var(--dim);margin-bottom:8px">${esc(ev.note||'非破壞式驗證 · 未執行 OS 指令 · 不改狀態')}</div>
      <div class="oracle"><div style="font-size:11px;color:var(--y);margin-bottom:8px;word-break:break-all">❯ ${esc(ev.reproduce||SMETA[f.stage]?.tool||f.stage)}</div>
+      ${sens&&!rev?'<div style="font-size:10px;color:var(--mag);margin-bottom:6px">🔒 機敏證據已遮蔽 · 點「👁 顯示」揭露</div>':''}
       ${proof.map(p=>`<div style="font-size:11px;color:var(--fg);line-height:1.7;word-break:break-all">${esc(p)}</div>`).join('')}</div></div>
     <div style="padding-top:14px;display:flex;flex-direction:column;gap:11px">
      <div class="metagrid"><span class="muted">URL</span><span style="word-break:break-all">${esc(ev.url||'—')}</span>
@@ -715,13 +757,13 @@ function vFindings(){const c=counts();const list=dispFindings();
       <div class="abtn ${st==='confirmed'?'on':'y'}" onclick="event.stopPropagation();confirmF('${f.id}')">✓ 確認 CONFIRM</div>
       <div class="abtn ${st==='false-positive'?'on':''}" onclick="event.stopPropagation();fpF('${f.id}')">⊘ 誤報 FALSE-POS</div>
       <div class="abtn blue" onclick="event.stopPropagation();openRepro('${f.id}')">🔁 重現腳本</div>
-      ${['secret-leak','vcs-leak','backup-leak','admin-panel','dir-listing','info-leak'].includes(f.category)&&(ev.url||ev.value)?`<div class="abtn" onclick="event.stopPropagation();openDump('${f.id}')">⤓ DUMP</div>`:''}
+      ${isLeak(f)?`<div class="abtn ${ds&&ds.state==='ok'?'on':''}" onclick="event.stopPropagation();openDump('${f.id}','${dk}')">${dlabel}</div>`:''}
      </div></div></div>`:'';
   return `<div style="border-bottom:1px solid var(--line1)">
    <div class="ftable" onclick="ST.openF=ST.openF==='${f.id}'?null:'${f.id}';render()">
     <div><span class="sevb" style="background:${SM[f.severity].c}">${SM[f.severity].k}</span></div>
     <div style="font-size:13px;font-weight:700;color:${SM[f.severity].c}">${SM[f.severity].cvss}</div>
-    <div><div style="font-size:12px;color:var(--fg0);font-weight:600">${esc(f.title)}</div><div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(f.category)} · ${esc(f.confidence)}</div></div>
+    <div><div style="font-size:12px;color:var(--fg0);font-weight:600">${esc(f.title)}${sens?'<span class="sens">🔒 SENSITIVE</span>':''}</div><div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(f.category)} · ${esc(f.confidence)}</div></div>
     <div style="font-size:11px;color:var(--fg);word-break:break-all">${esc(f.host)}</div>
     <div style="font-size:10px;color:var(--dim)">${esc(f.stage)}<br><span class="muted">${esc(ev.cve||'—')}</span></div>
     <div><span class="statb" style="color:${statC};border-color:${statC}">${st.toUpperCase()}</span></div></div>${expand}</div>`;}).join('');
@@ -732,6 +774,8 @@ function vFindings(){const c=counts();const list=dispFindings();
    <div style="display:flex;align-items:center;gap:14px"><span class="lab">STATUS</span>${statChips}<span style="flex:1"></span>
     <span class="lab">SORT</span><span onclick="ST.sortBy='sev';render()" style="cursor:pointer;font-size:10px;color:${ST.sortBy==='sev'?'var(--y)':'var(--faint)'}">SEVERITY</span>
     <span onclick="ST.sortBy='cvss';render()" style="cursor:pointer;font-size:10px;color:${ST.sortBy==='cvss'?'var(--y)':'var(--faint)'}">CVSS</span>
+    <span onclick="dumpAll()" class="reveal" style="color:var(--mag);border-color:rgba(255,61,174,.4)">⤓ Dump 全部洩漏</span>
+    <span onclick="clearDumps()" class="reveal" style="color:var(--faint);border-color:var(--line2)">🧹 清除 dumps</span>
     <span onclick="setView('report')" style="cursor:pointer;font-size:10px;font-weight:700;color:var(--y);border:1px solid var(--y);padding:6px 13px">匯出報告 →</span></div></div>
   <div style="flex:none;display:grid;grid-template-columns:88px 60px 1fr 200px 150px 120px;gap:12px;padding:8px 18px;border-bottom:1px solid var(--line1);font-size:9px;color:var(--faint);letter-spacing:1px">
    <div>SEVERITY</div><div>CVSS</div><div>FINDING</div><div>TARGET</div><div>STAGE / CVE</div><div>STATUS</div></div>
@@ -743,12 +787,26 @@ function togSev(k){ST.sev.has(k)?ST.sev.delete(k):ST.sev.add(k);render();}
 /* ---- repro / dump -> shell overlay ---- */
 async function openRepro(id){toast('產生重現腳本…');const r=await api('GET','/api/runs/'+ST.runId+'/repro?finding_id='+id);
  if(!Array.isArray(r)||!r.length)return toast('此 finding 無自動化重現');const s=r[0];
- showShell({title:'重現腳本 · '+(s.cve||s.category),sub:s.filename,cmd:s.filename,status:'PoC',statC:'var(--blue)',body:s.script,copy:s.script,dl:{name:s.filename,text:s.script}});}
-async function openDump(id){toast('抓存中…');const r=await api('POST','/api/runs/'+ST.runId+'/dump',{finding_id:id});
- if(!r||!r.ok)return toast((r&&r.error)||'dump 失敗');
- let body=r.preview||'';if(r.kind==='git')body=r.preview;
- showShell({title:'DUMP · '+(r.kind||'file'),sub:r.saved||r.dir,cmd:r.saved||r.dir,status:'SAVED',statC:'var(--y)',body:body||'(saved)',copy:body});
- toast('已抓存 → '+(r.saved||r.dir));}
+ showShell({mode:'repro',title:'重現腳本 · '+(s.cve||s.category),sub:s.filename+(s.expect?' · expect: '+s.expect:''),cmd:s.filename,status:'PoC',statC:'var(--y)',body:s.script,copy:s.script,dl:{name:s.filename,text:s.script}});}
+function fmtSize(n){return n<1024?n+'B':n<1048576?(n/1024).toFixed(1)+'K':(n/1048576).toFixed(1)+'M';}
+function togReveal(id){ST.reveal.has(id)?ST.reveal.delete(id):ST.reveal.add(id);render();}
+async function openDump(id,kind){ST.dumps[id]={state:'dumping'};render();
+ const r=await api('POST','/api/runs/'+ST.runId+'/dump',{finding_id:id});
+ if(!r||!r.ok){ST.dumps[id]={state:(r&&/out of scope/i.test(r.error||''))?'oos':'fail'};render();return toast((r&&r.error)||'dump 失敗（可能已下架）');}
+ const sz=fmtSize(r.size||0);ST.dumps[id]={state:'ok',size:sz,kind:r.kind};render();
+ let body;
+ if(r.kind==='key')body='# KEY CARD · ⚠ 已落地磁碟,請自行保管/清除\n\n'+(r.preview||'');
+ else if(r.kind==='git')body='# GIT DUMP · 重建原始碼 · ⚠ 已落地 runs/…/dumps/\n\n'+(r.preview||'');
+ else body=r.preview||'(saved)';
+ showShell({mode:'dump',title:'DUMP · '+(r.kind||'file').toUpperCase(),sub:(r.saved||r.dir)+' · '+sz,cmd:r.saved||r.dir,
+  status:'SAVED',statC:'var(--mag)',body,copy:r.preview,land:'已落地 runs/'+ST.runId+'/dumps/ · 請自行保管/清除'});
+ toast('已抓存 → '+(r.saved||r.dir)+' · '+sz);}
+async function dumpAll(){const leaks=allFindings().filter(f=>!f.false_positive&&isLeak(f));if(!leaks.length)return toast('無可 dump 的 leak');
+ toast('dumping '+leaks.length+' 個…');let ok=0;
+ for(const f of leaks){ST.dumps[f.id]={state:'dumping'};const r=await api('POST','/api/runs/'+ST.runId+'/dump',{finding_id:f.id});
+  ST.dumps[f.id]=r&&r.ok?{state:'ok',size:fmtSize(r.size||0),kind:r.kind}:{state:'fail'};if(r&&r.ok)ok++;}
+ render();toast('已抓存 '+ok+'/'+leaks.length+' → runs/'+ST.runId+'/dumps/');}
+async function clearDumps(){if(!ST.runId)return;const r=await api('POST','/api/runs/'+ST.runId+'/dumps/clear');ST.dumps={};render();toast('已清除 '+((r&&r.cleared)||0)+' 個 dump');}
 async function openCell(tid,sid){const t=targets().find(x=>(x.raw||x.host)===tid);if(!t)return;
  const st=(t.stages||{})[sid];const arts=(st&&st.artifacts)||[];
  const meta=SMETA[sid]||{n:sid,tool:sid};const hit=stageHit(t,sid);
@@ -763,24 +821,29 @@ function showShell(o){ST._shell=o;renderOverlay();}
 function closeShell(){ST._shell=null;renderOverlay();}
 function renderOverlay(){const el=document.getElementById('overlay');const o=ST._shell;
  if(!o){el.innerHTML='';return;}
+ const mt={log:['LOG','mt-log'],dump:['DUMP','mt-dump'],repro:['PoC','mt-poc']}[o.mode||'log'];
  el.innerHTML=`<div class="scrim" onclick="if(event.target===this)closeShell()"><div class="shell">
   <div class="shead"><span style="width:8px;height:8px;border-radius:50%;background:${o.statC}"></span>
+   <span class="modetag ${mt[1]}">${mt[0]}</span>
    <div style="flex:1"><div style="font-size:13px;color:var(--fg0);font-weight:700">${esc(o.title)}</div><div style="font-size:10px;color:var(--dim);margin-top:2px">${esc(o.sub||'')}</div></div>
    <span class="statb" style="color:${o.statC};border-color:${o.statC}">${esc(o.status||'')}</span>
    <span onclick="closeShell()" style="cursor:pointer;font-size:16px;color:var(--faint);padding:0 4px">✕</span></div>
   <div class="scmd"><div class="lab" style="margin-bottom:4px">COMMAND</div><div style="font-size:11px;color:var(--y);word-break:break-all">${esc(o.cmd||'')}</div></div>
   <div class="sbody">${renderShellBody(o.body)}</div>
-  <div style="flex:none;padding:10px 18px;border-top:1px solid var(--line);display:flex;gap:8px">
+  <div style="flex:none;padding:10px 18px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px">
+   <span class="authnote">◈ 僅限授權標的 / authorized targets only${o.land?' · '+esc(o.land):''}</span>
+   <span style="flex:1"></span>
    ${o.copy?`<div class="abtn" onclick="shellCopy()">複製</div>`:''}
    ${o.dl?`<div class="abtn y" onclick="shellDl()">⭳ 下載 .sh</div>`:''}
-   <span style="flex:1"></span><div class="abtn" onclick="closeShell()">關閉</div></div>
+   <div class="abtn" onclick="closeShell()">關閉</div></div>
  </div></div>`;}
 function renderShellBody(txt){return (txt||'').split(/\r?\n/).map(l=>{
   if(/^#\s\$\s/.test(l))return `<div style="color:var(--y)">${esc(l)}</div>`;
   if(/^#/.test(l))return `<div style="color:var(--blue)">${esc(l)}</div>`;
   if(/VULNERABLE|\[\+\]/.test(l))return `<div style="color:var(--crit)">${esc(l)}</div>`;
   return `<div style="color:var(--soft)">${esc(l)}</div>`;}).join('');}
-function shellCopy(){const o=ST._shell;if(o&&o.copy&&navigator.clipboard){navigator.clipboard.writeText(o.copy);toast('已複製');}}
+function shellCopy(){const o=ST._shell;if(o&&o.copy&&navigator.clipboard){navigator.clipboard.writeText(o.copy);toast(o.mode==='dump'?'已複製機敏內容,注意保管':'已複製');}}
+function evProof(f){const ev=f.evidence||{};if(!ST.opt.plaintext&&isSensitive(f)){const c={};for(const [k,v] of Object.entries(ev))c[k]=(typeof v==='string')?maskText(v):v;return c;}return ev;}
 function shellDl(){const o=ST._shell;if(o&&o.dl)dlText(o.dl.name,o.dl.text);}
 function dlText(name,text){const b=new Blob([text],{type:'text/plain'});const u=URL.createObjectURL(b);
  const a=document.createElement('a');a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);}
@@ -789,9 +852,9 @@ function reportText(fmt){const min=SM[ST.opt.minSev].r;
  const F=allFindings().filter(f=>!f.false_positive&&SM[f.severity].r>=min);
  const scope=(targets().map(t=>t.host).join(', '))||'—';const c=counts();
  if(fmt==='json')return JSON.stringify({tool:'edu-recon',intensity:ST.intensity,scope,summary:c,
-   findings:F.map(f=>({id:f.id,severity:f.severity,cvss:SM[f.severity].cvss,cve:(f.evidence||{}).cve||'',title:f.title,target:f.host,stage:f.stage,category:f.category,...(ST.opt.evidence?{evidence:f.evidence}:{})}))},null,2);
+   findings:F.map(f=>({id:f.id,severity:f.severity,cvss:SM[f.severity].cvss,cve:(f.evidence||{}).cve||'',title:f.title,target:f.host,stage:f.stage,category:f.category,sensitive:isSensitive(f),...(ST.opt.evidence?{evidence:evProof(f)}:{})}))},null,2);
  if(fmt==='md'){let s='# edu-recon report\n\n- intensity: '+ST.intensity+'\n'+(ST.opt.scope?'- scope: '+scope+'\n':'')+'\n## Summary\n\n'+Object.entries(c).map(([k,v])=>'- '+k+': '+v).join('\n')+'\n\n## Findings\n\n';
-  F.forEach(f=>{s+='### ['+SM[f.severity].k+'] '+f.title+'\n\n- target: `'+f.host+'`\n- cve: '+((f.evidence||{}).cve||'—')+' · cvss '+SM[f.severity].cvss+'\n- stage: '+f.stage+'\n'+(ST.opt.evidence?'- evidence: `'+esc(JSON.stringify(f.evidence))+'`\n':'')+'- remediation: '+(REMED[f.category]||'—')+'\n\n';});return s;}
+  F.forEach(f=>{s+='### ['+SM[f.severity].k+'] '+f.title+'\n\n- target: `'+f.host+'`\n- cve: '+((f.evidence||{}).cve||'—')+' · cvss '+SM[f.severity].cvss+'\n- stage: '+f.stage+'\n'+(ST.opt.evidence?'- evidence: `'+esc(JSON.stringify(evProof(f)))+'`\n':'')+'- remediation: '+(REMED[f.category]||'—')+'\n\n';});return s;}
  const rows=F.map(f=>'<tr><td class="s" style="color:'+cssvar(SM[f.severity].c)+'">'+SM[f.severity].k+'</td><td>'+SM[f.severity].cvss+'</td><td><b>'+esc(f.title)+'</b><br><span style="color:#82806A">'+esc(f.category)+'</span></td><td><code>'+esc(f.host)+'</code></td><td>'+esc((f.evidence||{}).cve||'—')+'</td></tr>').join('');
  return '<!doctype html><meta charset=utf-8><title>edu-recon report</title><style>body{background:#0B0B09;color:#DAD8C8;font:13px/1.5 "JetBrains Mono",monospace;margin:0;padding:32px}h1{color:#F2E409;letter-spacing:2px}table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid rgba(150,146,120,.18);padding:8px 10px;text-align:left;vertical-align:top}code{color:#F2E409}.s{font-weight:700}</style><h1>EDU-RECON REPORT</h1><div style="color:#82806A">intensity '+ST.intensity+(ST.opt.scope?' · scope '+esc(scope):'')+'</div><table><tr><th>SEV</th><th>CVSS</th><th>FINDING</th><th>TARGET</th><th>CVE</th></tr>'+rows+'</table>';}
 function vReport(){const min=SM[ST.opt.minSev].r;const F=allFindings().filter(f=>!f.false_positive&&SM[f.severity].r>=min);const c=counts();
@@ -803,7 +866,8 @@ function vReport(){const min=SM[ST.opt.minSev].r;const F=allFindings().filter(f=
    <div><div class="eyebrow">STEP 04</div><div class="vtitle" style="font-size:17px">匯出報告 · EXPORT</div></div>
    <div><div class="lab" style="margin-bottom:8px">FORMAT / 格式</div><div style="display:flex;flex-direction:column;gap:6px">
     ${fmts.map(([k,l])=>`<div onclick="ST.fmt='${k}';render()" style="cursor:pointer;padding:10px 13px;border:1px solid ${ST.fmt===k?'var(--y)':'var(--line2)'};color:${ST.fmt===k?'var(--y)':'var(--faint)'};font-size:12px;font-weight:700;letter-spacing:1px;display:flex;align-items:center;gap:10px"><span style="width:7px;height:7px;background:${ST.fmt===k?'var(--y)':'var(--faint)'}"></span>${l}</div>`).join('')}</div></div>
-   <div><div class="lab" style="margin-bottom:8px">OPTIONS / 選項</div><div style="display:flex;flex-direction:column;gap:8px">${opt('evidence','附上證據 evidence')}${opt('scope','附上授權範圍聲明')}${opt('rawlog','附上原始工具 log')}</div></div>
+   <div><div class="lab" style="margin-bottom:8px">OPTIONS / 選項</div><div style="display:flex;flex-direction:column;gap:8px">${opt('evidence','附證據(遮蔽 masked)')}${opt('plaintext','附機敏明文(危險 DANGER)')}${opt('scope','附上授權範圍聲明')}${opt('rawlog','附上原始工具 log')}
+    ${ST.opt.plaintext?'<div style="font-size:9px;color:var(--crit);border:1px solid rgba(255,61,94,.4);padding:5px 8px">⚠ 危險:金鑰/密碼將以明文寫入匯出報告</div>':''}</div></div>
    <div><div class="lab" style="margin-bottom:8px">MIN SEVERITY / 門檻</div><div style="display:flex;gap:6px">${mn('low','LOW+')}${mn('medium','MED+')}${mn('high','HIGH+')}</div></div>
    <div class="arm notch" style="padding:14px;font-size:13px;letter-spacing:1px" onclick="downloadReport()">⭳ 下載 ${ST.fmt.toUpperCase()} · ${F.length} 筆</div>
    <div style="font-size:9px;color:var(--faint);line-height:1.7">報告可複審:每筆 finding 含嚴重度、標的、非破壞式 oracle 證據與修補建議。</div></div>
@@ -812,6 +876,7 @@ function vReport(){const min=SM[ST.opt.minSev].r;const F=allFindings().filter(f=
     <div style="padding:22px 26px;border-bottom:1px solid var(--line)">
      <div style="font-size:20px;font-weight:800;color:var(--y);letter-spacing:2px">EDU-RECON REPORT</div>
      <div style="font-size:10px;color:var(--dim);margin-top:6px">intensity ${ST.intensity} · preview · ${ST.fmt.toUpperCase()}</div>
+     <div class="authnote" style="margin-top:4px">◈ 僅限授權標的 · 報告金鑰/密碼預設遮蔽${ST.opt.plaintext?' · <span style="color:var(--crit)">明文模式(危險)</span>':''}</div>
      <div style="display:flex;gap:16px;margin-top:14px">${['critical','high','medium','low','info'].map(k=>`<span style="font-size:11px;color:${SM[k].c}">${SM[k].k} ${c[k]||0}</span>`).join('')}</div></div>
     <div style="padding:8px 0">${F.map(f=>`<div style="padding:12px 26px;border-bottom:1px solid var(--line1)">
       <div style="display:flex;align-items:center;gap:10px"><span class="sevb" style="background:${SM[f.severity].c}">${SM[f.severity].k}</span>
@@ -819,7 +884,7 @@ function vReport(){const min=SM[ST.opt.minSev].r;const F=allFindings().filter(f=
        <span style="font-size:12px;color:var(--fg0);font-weight:600">${esc(f.title)}</span><span style="flex:1"></span>
        <span style="font-size:10px;color:var(--dim)">${esc((f.evidence||{}).cve||'—')}</span></div>
       <div style="font-size:10px;color:var(--dim);margin-top:5px">${esc(f.host)} · ${esc(f.stage)}</div>
-      ${ST.opt.evidence?`<div style="margin-top:7px;padding:8px 11px;background:#070707;border-left:2px solid ${SM[f.severity].c};font-size:10px;color:var(--dim);word-break:break-all">${esc(JSON.stringify(f.evidence))}</div>`:''}</div>`).join('')||'<div class="muted" style="padding:30px">無符合門檻的 finding。</div>'}</div></div></div></div>`;}
+      ${ST.opt.evidence?`<div style="margin-top:7px;padding:8px 11px;background:#070707;border-left:2px solid ${SM[f.severity].c};font-size:10px;color:var(--dim);word-break:break-all">${esc(JSON.stringify(evProof(f)))}${isSensitive(f)?'<span class="sens">🔒</span>':''}</div>`:''}</div>`).join('')||'<div class="muted" style="padding:30px">無符合門檻的 finding。</div>'}</div></div></div></div>`;}
 function downloadReport(){dlText('edu-recon-report.'+ST.fmt,reportText(ST.fmt));}
 /* ---- toast / boot ---- */
 function toast(m){const el=document.getElementById('toast');el.textContent=m;el.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(()=>el.classList.remove('show'),2600);}
