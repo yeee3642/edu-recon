@@ -196,15 +196,50 @@ def parse_phpcgi_stdout(text: str) -> dict[str, Any]:
     norm = re.sub(r"\s+", " ", text)
     vulnerable = ("找到 CGI 注入點" in norm) or ("TEST_VULNTEST" in text)
     cgipoint = ""
-    m = re.search(r"找到 CGI 注入點[：:]\s*([^\s(（]+)", norm)
+    m = re.search(r"找到\s*CGI\s*注入點[：:]\s*([^\s(（]+)", norm)
     if m:
         cgipoint = m.group(1)
-    cve = "CVE-2024-8926" if "CVE-2024-8926" in text else "CVE-2024-4577"
+    # The CVE is whatever the detection line reports as the payload group
+    # (漏洞: CVE-…). Do NOT substring-scan the whole output — the tool's banner
+    # names both CVEs, so that would always mislabel the finding.
     payload = ""
-    pm = re.search(r"漏洞[：:]\s*([^)）]+)", norm)
+    pm = re.search(r"漏洞[：:]\s*(CVE-\d{4}-\d+)", norm)
     if pm:
         payload = pm.group(1).strip()
+    cve = payload if payload.upper().startswith("CVE-") else "CVE-2024-4577"
     return {"vulnerable": vulnerable, "cgipoint": cgipoint, "cve": cve, "payload": payload}
+
+
+# --------------------------------------------------------------------------- #
+# react2shell-scanner (hidden-investigations/react2shell-scanner, CVE-2025-55182)
+# --------------------------------------------------------------------------- #
+def parse_react2shell_json(path: str) -> list[dict[str, Any]]:
+    """Return the successful React2Shell results written to the -o JSON file.
+
+    The tool writes an array of objects: {url, path, success, status, output,
+    http:{status_code, headers}}. Only entries with success==True are exploited
+    endpoints (a SAFE_CHECK_OK marker in --safe-check mode, else command output).
+    """
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            data = json.load(fh)
+    except (json.JSONDecodeError, FileNotFoundError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for e in data:
+        if not isinstance(e, dict):
+            continue
+        if e.get("success") is True or str(e.get("status")).lower() == "success":
+            http = e.get("http") or {}
+            out.append({
+                "url": e.get("url", ""),
+                "path": e.get("path", ""),
+                "output": (e.get("output") or "").strip(),
+                "status_code": http.get("status_code") if isinstance(http, dict) else None,
+            })
+    return out
 
 
 def _int(v: Any) -> int:

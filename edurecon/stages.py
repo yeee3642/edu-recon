@@ -444,6 +444,81 @@ def stage_phpcgi(ctx: StageCtx) -> None:
     ctx.ts.stage("phpcgi").note = f"{found} vulnerable endpoint(s)"
 
 
+def stage_react2shell(ctx: StageCtx) -> None:
+    """CVE-2025-55182 React Server Components RCE via react2shell-scanner.
+
+    Defaults to --safe-check (a SAFE_CHECK_OK marker payload, no OS command) so a
+    positive confirms the RSC injection reaches code execution without running a
+    shell command. Set react2shell_safe_check=false to prove RCE with a benign
+    command (react2shell_command, default `id`).
+    """
+    cfg = ctx.cfg
+    if not cfg.react2shell_enabled:
+        ctx.ts.stage("react2shell").note = "disabled"
+        return
+    script = os.path.join(cfg.react2shell_dir, "react2shell-scanner.py")
+    if not os.path.exists(script):
+        ctx.ts.stage("react2shell").note = "react2shell-scanner not installed (run: recon.py setup)"
+        return
+    bases = _root_bases(ctx.ts)
+    if not bases:
+        ctx.ts.stage("react2shell").note = "no http service"
+        return
+
+    found = 0
+    for i, base in enumerate(bases):
+        if ctx.aborted():
+            return
+        ctx.scope.check(ctx.ts.host)
+        paths = _react2shell_paths(ctx.ts, cfg)
+        out_json = ctx.artifact(f"react2shell-{i}.json")
+        argv = [cfg.react2shell_python, script, "-t", base, "-o", out_json,
+                "-q", "--no-color", "--timeout", str(cfg.react2shell_target_timeout)]
+        for p in paths:
+            argv += ["--path", p]
+        if cfg.react2shell_safe_check:
+            argv += ["--safe-check"]
+        else:
+            argv += ["-c", cfg.react2shell_command]
+            if cfg.react2shell_windows:
+                argv += ["--windows"]
+        if cfg.react2shell_insecure:
+            argv += ["-k"]
+        if cfg.react2shell_waf_bypass:
+            argv += ["--waf-bypass"]
+        if cfg.react2shell_vercel_waf_bypass:
+            argv += ["--vercel-waf-bypass"]
+        ctx.run(argv, stage="react2shell", log_name=f"react2shell-{i}.log")
+        ctx.record_artifact("react2shell", out_json)
+        for hit in parse.parse_react2shell_json(out_json):
+            found += 1
+            mode = "safe-check marker" if cfg.react2shell_safe_check else "command output"
+            repro = (f"cd {cfg.react2shell_dir} && {cfg.react2shell_python} "
+                     f"react2shell-scanner.py -t {base} --path {hit['path'] or '/'} "
+                     + ("--safe-check" if cfg.react2shell_safe_check
+                        else f"-c {cfg.react2shell_command!r}"))
+            ctx.finding(stage="react2shell", category="cve",
+                        title="CVE-2025-55182 React Server Components RCE (React2Shell)",
+                        severity="critical", confidence="confirmed",
+                        evidence={"url": hit["url"], "path": hit["path"],
+                                  "cve": "CVE-2025-55182", "mode": mode,
+                                  "output": hit["output"][:400],
+                                  "status_code": hit["status_code"],
+                                  "reproduce": repro})
+    ctx.ts.stage("react2shell").note = f"{found} vulnerable endpoint(s)"
+
+
+def _react2shell_paths(ts, cfg: Config) -> list[str]:
+    """Configured paths, plus an explicit URL target's own path when present."""
+    paths = list(cfg.react2shell_paths) or ["/"]
+    if ts.base_url:
+        from urllib.parse import urlparse
+        p = urlparse(ts.base_url).path or "/"
+        if p not in paths:
+            paths.append(p)
+    return paths
+
+
 def stage_sqli(ctx: StageCtx, candidate_only: bool = False) -> None:
     cfg = ctx.cfg
     ensure_crawl(ctx)

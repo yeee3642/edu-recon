@@ -38,6 +38,13 @@ def run(argv: list[str], *, timeout: int = 600, cwd: str | None = None,
     """
     start = time.time()
     full_env = dict(os.environ)
+    # Force UTF-8 stdio in Python-based tool children (php-cgi-Injector,
+    # react2shell-scanner, wp2shell, sqlmap, dirsearch). Otherwise their output
+    # is encoded with the Windows ANSI codepage (e.g. cp950 on Big5/CJK hosts)
+    # and rich/banner box characters crash the child before it prints results.
+    # Native binaries (nmap/hydra) ignore these. env= overrides still win.
+    full_env["PYTHONIOENCODING"] = "utf-8"
+    full_env["PYTHONUTF8"] = "1"
     if env:
         full_env.update(env)
 

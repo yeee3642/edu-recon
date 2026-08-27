@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
@@ -22,16 +23,16 @@ EXPANSION_STAGES = ["hostdiscovery", "subdomain"]
 INTENSITY_STAGES = {
     # passive: never touches auth or injection; benign GETs + fingerprinting only
     "passive": {"portscan", "webdisco", "exposures", "secrets"},
-    # recon: phpcgi + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
-    "recon": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "wp", "xss",
-              "sqli_candidate", "cred_candidate"},
+    # recon: phpcgi + react2shell + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
+    "recon": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
+              "wp", "xss", "sqli_candidate", "cred_candidate"},
     # full: everything runs for real
-    "full": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "wp", "xss",
-             "sqli", "cred"},
+    "full": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
+             "wp", "xss", "sqli", "cred"},
 }
 
-ALL_STAGES = ["portscan", "webdisco", "exposures", "secrets", "phpcgi", "xss",
-              "sqli", "cred", "wp"]
+ALL_STAGES = ["portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
+              "xss", "sqli", "cred", "wp"]
 
 
 @dataclass
@@ -54,7 +55,10 @@ class Config:
 
     # --- wp2shell (xAL6/php WordPress SQLi->shell engine, cloned repo) ---
     wp2shell_dir: str = os.path.join(ROOT, "third_party", "wp2shell")
-    wp2shell_python: str = "python3"
+    # Run bundled Python tools under the SAME interpreter as edu-recon so they
+    # inherit the deps installed by `recon.py setup`. On Windows a bare "python3"
+    # often resolves to a depless Store shim; sys.executable avoids that.
+    wp2shell_python: str = field(default_factory=lambda: sys.executable)
     # {target} -> host[:port]; assessment/--json is non-interactive
     wp2shell_argtmpl: list[str] = field(
         default_factory=lambda: ["{target}", "--json", "--path-guess"])
@@ -95,10 +99,28 @@ class Config:
     # --- CVE-2024-4577 / 8926 via Night-have-dreams/php-cgi-Injector ---
     phpcgi_enabled: bool = True
     phpcgi_dir: str = os.path.join(ROOT, "third_party", "php-cgi-Injector")
-    phpcgi_python: str = "python3"
-    phpcgi_bypass: bool = True           # --bypass WAF evasion (full intensity)
+    phpcgi_python: str = field(default_factory=lambda: sys.executable)
+    # NOTE: php-cgi-Injector's --bypass opens an INTERACTIVE tamper-selection
+    # menu (two input() prompts) with no headless flag, so it deadlocks/EOFs
+    # under edu-recon's stdin-closed invocation. Keep off for automated runs;
+    # use the tool by hand if a WAF needs evasion.
+    phpcgi_bypass: bool = False           # --bypass WAF evasion (interactive; headless-incompatible)
     phpcgi_target_timeout: int = 90      # per-URL wall-clock before we move on
     phpcgi_cgipoints: list[str] = field(default_factory=list)  # empty => tool defaults
+
+    # --- CVE-2025-55182 React Server Components RCE via
+    #     hidden-investigations/react2shell-scanner (Next.js / RSC apps) ---
+    react2shell_enabled: bool = True
+    react2shell_dir: str = os.path.join(ROOT, "third_party", "react2shell-scanner")
+    react2shell_python: str = field(default_factory=lambda: sys.executable)
+    react2shell_safe_check: bool = True  # SAFE_CHECK marker payload — no OS command run
+    react2shell_command: str = "id"      # only used when react2shell_safe_check is False
+    react2shell_paths: list[str] = field(default_factory=lambda: ["/"])
+    react2shell_waf_bypass: bool = False        # prepend junk multipart field
+    react2shell_vercel_waf_bypass: bool = False  # alternate multipart layout for Vercel WAF
+    react2shell_insecure: bool = True    # tolerate self-signed certs on internal targets
+    react2shell_windows: bool = False    # use whoami instead of id when command == id
+    react2shell_target_timeout: int = 25  # per-URL request timeout
 
     # --- crawler (feeds sqli + xss with param URLs / forms) ---
     crawl_max_pages: int = 40
@@ -130,8 +152,8 @@ class Config:
     # --- per-stage timeouts (seconds) ---
     timeouts: dict[str, int] = field(default_factory=lambda: {
         "hostdiscovery": 600, "subdomain": 600, "portscan": 3600, "webdisco": 1800,
-        "exposures": 300, "secrets": 600, "phpcgi": 1200, "xss": 1200, "sqli": 2400,
-        "cred": 1800, "wp": 1200,
+        "exposures": 300, "secrets": 600, "phpcgi": 1200, "react2shell": 900,
+        "xss": 1200, "sqli": 2400, "cred": 1800, "wp": 1200,
     })
 
     # --- scope safety ---
@@ -151,6 +173,8 @@ class Config:
         # cloned script tools (not PATH binaries)
         exploit = os.path.join(self.phpcgi_dir, "exploit.py")
         out["phpcgi"] = exploit if os.path.exists(exploit) else None
+        r2s = os.path.join(self.react2shell_dir, "react2shell-scanner.py")
+        out["react2shell"] = r2s if os.path.exists(r2s) else None
         wp = os.path.join(self.wp2shell_dir, "wp2shell.py")
         out["wp2shell"] = wp if os.path.exists(wp) else shutil.which("wp2shell")
         return out

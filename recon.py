@@ -117,6 +117,7 @@ def cmd_setup(args) -> int:
     # 2) Git tools that ship as scripts
     repos = [
         ("php-cgi-Injector", "https://github.com/Night-have-dreams/php-cgi-Injector.git"),
+        ("react2shell-scanner", "https://github.com/hidden-investigations/react2shell-scanner.git"),
         ("wp2shell", "https://github.com/xAL6/wp2shell.git"),
     ]
     for name, url in repos:

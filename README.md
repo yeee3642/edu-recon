@@ -20,6 +20,8 @@ targets ─▶ expand (CIDR ping-sweep, subdomain enum)
              secrets    JS/HTML key-leak scan (AWS/GCP/GitHub/Slack/Stripe/JWT/私鑰/…)
                         + API-doc / GraphQL-introspection exposure   ← api leak
              phpcgi     CVE-2024-4577 / 8926  via Night-have-dreams/php-cgi-Injector
+             react2shell CVE-2025-55182 React Server Components RCE
+                        via hidden-investigations/react2shell-scanner (safe-check by default)
              xss        dalfox + built-in reflected-XSS canary
              sqli       built-in SQL-error quick pass  +  sqlmap deep
              cred       hydra weak/default passwords (ssh/ftp/rdp/db/…)
@@ -33,7 +35,7 @@ targets ─▶ expand (CIDR ping-sweep, subdomain enum)
 
 ```bash
 git clone <this> edu-recon && cd edu-recon
-python recon.py setup          # clones php-cgi-Injector + wp2shell, installs their deps
+python recon.py setup          # clones php-cgi-Injector + react2shell-scanner + wp2shell, installs their deps
 python recon.py doctor         # shows which external scanners are present
 # install scanners as needed:  apt install nmap sqlmap hydra dirsearch
 #                              (optional) go install subfinder, dalfox
@@ -62,7 +64,7 @@ python recon.py scan -t targets.txt --intensity full
 | level    | what runs |
 |----------|-----------|
 | `full`   | everything, injection + weak-password executed (default) |
-| `recon`  | phpcgi + XSS + exposures run; **sqli/cred only list candidates** |
+| `recon`  | phpcgi + react2shell + XSS + exposures run; **sqli/cred only list candidates** |
 | `passive`| portscan + webdisco + exposures + secrets (benign GETs only) |
 
 ## Config
@@ -83,11 +85,11 @@ edurecon/
   stages.py           every scan stage
   webscan.py          crawler + reflected-XSS + SQL-error heuristics
   secrets.py          key-leak regexes + API-doc/GraphQL probes
-  parse.py            nmap/dirsearch/sqlmap/hydra/phpcgi output parsers
+  parse.py            nmap/dirsearch/sqlmap/hydra/phpcgi/react2shell parsers
   triage.py           service inference, soft-404 filter, dedupe, ranking
   report.py           JSON / Markdown / HTML export
   store.py            run state + JSON persistence
   webui.py            stdlib web control panel
-third_party/          php-cgi-Injector, wp2shell (via `setup`)
+third_party/          php-cgi-Injector, react2shell-scanner, wp2shell (via `setup`)
 runs/                 per-run artifacts + reports
 ```
