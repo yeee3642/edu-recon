@@ -20,6 +20,7 @@ from .models import Service, WebPath
 from . import parse, webhttp, webscan
 from . import secrets as secretscan
 from . import cveprobes
+from . import edusys
 
 # nmap service name / port  ->  hydra module
 HYDRA_MODULES = {
@@ -318,7 +319,70 @@ def stage_exposures(ctx: StageCtx) -> None:
                                   "snippet": body[:400].strip()})
         if cfg.backup_leak:
             hits += _probe_backups(ctx, root)
+        if cfg.admin_panel_probe:
+            hits += _probe_admin_panels(ctx, root)
+        if cfg.dir_listing_probe:
+            hits += _probe_dir_listing(ctx, root)
     ctx.ts.stage("exposures").note = f"{hits} exposure(s)"
+
+
+# phpMyAdmin / Adminer DB-admin panels commonly left exposed on edu hosts.
+PMA_PATHS = ["/phpmyadmin/", "/phpMyAdmin/", "/pma/", "/PMA/", "/mysql/",
+             "/dbadmin/", "/phpmyadmin2/", "/phpMyAdmin2/", "/phpmyadmin/index.php"]
+ADMINER_PATHS = ["/adminer.php", "/adminer/", "/adminer/adminer.php",
+                 "/adminer-4.8.1.php", "/adminer-4.8.1-en.php", "/db.php"]
+DIR_LISTING_DIRS = ["/", "/uploads/", "/files/", "/backup/", "/backups/",
+                    "/images/", "/img/", "/data/", "/tmp/", "/old/", "/test/",
+                    "/download/", "/upload/"]
+
+
+def _probe_admin_panels(ctx: StageCtx, root: str) -> int:
+    cfg = ctx.cfg
+    hits = 0
+    # phpMyAdmin — flag the login, escalate if the setup script is reachable
+    for path in PMA_PATHS:
+        st, _h, body = webhttp.get(root + path, cfg.http_timeout, cfg.user_agent)
+        if st == 200 and "phpmyadmin" in body.lower():
+            sev, title = "medium", f"phpMyAdmin exposed: {path}"
+            sst, _sh, sbody = webhttp.get(root + "/phpmyadmin/setup/",
+                                          cfg.http_timeout, cfg.user_agent)
+            if sst == 200 and "setup" in sbody.lower() and "phpmyadmin" in sbody.lower():
+                sev, title = "high", "phpMyAdmin setup script exposed (/phpmyadmin/setup/)"
+            hits += 1
+            ctx.finding(stage="exposures", category="admin-panel", title=title,
+                        severity=sev, confidence="high",
+                        evidence={"url": root + path, "software": "phpMyAdmin"})
+            break
+    # Adminer — single-file DB client, known SSRF / brute surface
+    for path in ADMINER_PATHS:
+        st, _h, body = webhttp.get(root + path, cfg.http_timeout, cfg.user_agent)
+        if st == 200 and "adminer" in body.lower() and "login" in body.lower():
+            hits += 1
+            ctx.finding(stage="exposures", category="admin-panel",
+                        title=f"Adminer DB client exposed: {path}",
+                        severity="medium", confidence="high",
+                        evidence={"url": root + path, "software": "Adminer"})
+            break
+    return hits
+
+
+def _probe_dir_listing(ctx: StageCtx, root: str) -> int:
+    cfg = ctx.cfg
+    hits = 0
+    for d in DIR_LISTING_DIRS:
+        if hits >= 3:                      # cap noise: a few examples is enough
+            break
+        st, _h, body = webhttp.get(root + d, cfg.http_timeout, cfg.user_agent)
+        low = body.lower()
+        if st == 200 and ("<title>index of /" in low or "directory listing for" in low
+                          or ">index of /" in low):
+            hits += 1
+            ctx.finding(stage="exposures", category="dir-listing",
+                        title=f"Directory listing enabled: {d}",
+                        severity="medium", confidence="high",
+                        evidence={"url": root + d,
+                                  "snippet": body[:200].strip()})
+    return hits
 
 
 def _probe_backups(ctx: StageCtx, root: str) -> int:
@@ -548,6 +612,40 @@ def stage_webcve(ctx: StageCtx) -> None:
                         evidence={"cve": hit["cve"], "url": hit["url"],
                                   **hit.get("evidence", {})})
     ctx.ts.stage("webcve").note = f"{found} CVE hit(s)"
+
+
+def stage_moodle(ctx: StageCtx) -> None:
+    """Education-sector system audit: Moodle fingerprint + version + data-dir leak."""
+    cfg = ctx.cfg
+    if not cfg.moodle_enabled:
+        ctx.ts.stage("moodle").note = "disabled"
+        return
+    bases = _root_bases(ctx.ts)
+    if not bases:
+        ctx.ts.stage("moodle").note = "no http service"
+        return
+    found = 0
+    detected = False
+    for base in bases:
+        if ctx.aborted():
+            return
+        ctx.scope.check(ctx.ts.host)
+        try:
+            hits = edusys.probe_moodle(base, cfg)
+        except Exception as e:
+            ctx.logger(f"[{ctx.ts.host}] moodle probe error: {e}")
+            continue
+        for hit in hits:
+            detected = True
+            if hit["severity"] in ("medium", "high", "critical"):
+                found += 1
+            ctx.finding(stage="moodle", category=hit["category"], title=hit["title"],
+                        severity=hit["severity"], confidence=hit["confidence"],
+                        evidence={"url": hit["url"], **hit.get("evidence", {})})
+    if not detected:
+        ctx.ts.stage("moodle").note = "no Moodle detected"
+    else:
+        ctx.ts.stage("moodle").note = f"Moodle found; {found} issue(s)"
 
 
 def stage_sqli(ctx: StageCtx, candidate_only: bool = False) -> None:

@@ -42,6 +42,14 @@ webcve_confluence: true         # CVE-2022-26134 Confluence OGNL pre-auth RCE
 webcve_drupalgeddon2: true      # CVE-2018-7600  Drupalgeddon2 RCE
 webcve_nextjs_mw: true          # CVE-2025-29927 Next.js middleware auth bypass
 
+# --- exposures: DB-admin panels + open directory listing (education staples) ---
+admin_panel_probe: true         # phpMyAdmin / Adminer exposed
+dir_listing_probe: true         # open directory listing (Index of /)
+
+# --- education-sector system audit (Moodle: the dominant campus LMS) ---
+moodle_enabled: true
+moodle_min_supported: "4.1"     # branches below this are flagged as outdated
+
 # --- nmap ---
 nmap_top_ports: 1000      # set 0 for a full -p- scan
 nmap_min_rate: 1500

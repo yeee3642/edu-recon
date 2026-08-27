@@ -23,6 +23,7 @@ _DISPATCH = {
     "phpcgi":    lambda c, co: stages.stage_phpcgi(c),
     "react2shell": lambda c, co: stages.stage_react2shell(c),
     "webcve":    lambda c, co: stages.stage_webcve(c),
+    "moodle":    lambda c, co: stages.stage_moodle(c),
     "xss":       lambda c, co: stages.stage_xss(c),
     "sqli":      lambda c, co: stages.stage_sqli(c, co),
     "cred":      lambda c, co: stages.stage_cred(c, co),

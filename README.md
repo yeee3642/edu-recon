@@ -17,6 +17,7 @@ targets ─▶ expand (CIDR ping-sweep, subdomain enum)
              portscan   nmap -sV -sC (+ --script vuln)
              webdisco   dirsearch  (+ WordPress detect)
              exposures  .git / .env / backups / phpinfo / server-status / actuator …
+                        + phpMyAdmin/Adminer exposure + open directory listing
              secrets    JS/HTML key-leak scan (AWS/GCP/GitHub/Slack/Stripe/JWT/私鑰/…)
                         + API-doc / GraphQL-introspection exposure   ← api leak
              phpcgi     CVE-2024-4577 / 8926  via Night-have-dreams/php-cgi-Injector
@@ -25,6 +26,8 @@ targets ─▶ expand (CIDR ping-sweep, subdomain enum)
              webcve     built-in non-destructive safe-check probes for famous CVEs:
                         PHPUnit 2017-9841 · Apache-traversal 2021-41773 · Struts2 2017-5638
                         · Confluence 2022-26134 · Drupalgeddon2 2018-7600 · Next.js 2025-29927
+             moodle     Moodle LMS fingerprint + version + outdated-branch +
+                        web-exposed moodledata (the dominant .edu system)
              xss        dalfox + built-in reflected-XSS canary
              sqli       built-in SQL-error quick pass  +  sqlmap deep
              cred       hydra weak/default passwords (ssh/ftp/rdp/db/…)
@@ -89,6 +92,7 @@ edurecon/
   webscan.py          crawler + reflected-XSS + SQL-error heuristics
   secrets.py          key-leak regexes + API-doc/GraphQL probes
   cveprobes.py        built-in non-destructive famous-CVE safe-check probes
+  edusys.py           education-sector system audit (Moodle)
   parse.py            nmap/dirsearch/sqlmap/hydra/phpcgi/react2shell parsers
   triage.py           service inference, soft-404 filter, dedupe, ranking
   report.py           JSON / Markdown / HTML export

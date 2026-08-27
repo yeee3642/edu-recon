@@ -22,17 +22,17 @@ EXPANSION_STAGES = ["hostdiscovery", "subdomain"]
 # Per-target intensity -> which stages execute vs. only list candidates.
 INTENSITY_STAGES = {
     # passive: never touches auth or injection; benign GETs + fingerprinting only
-    "passive": {"portscan", "webdisco", "exposures", "secrets"},
-    # recon: phpcgi + react2shell + webcve + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
+    "passive": {"portscan", "webdisco", "exposures", "secrets", "moodle"},
+    # recon: phpcgi + react2shell + webcve + moodle + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
     "recon": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
-              "webcve", "wp", "xss", "sqli_candidate", "cred_candidate"},
+              "webcve", "moodle", "wp", "xss", "sqli_candidate", "cred_candidate"},
     # full: everything runs for real
     "full": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
-             "webcve", "wp", "xss", "sqli", "cred"},
+             "webcve", "moodle", "wp", "xss", "sqli", "cred"},
 }
 
 ALL_STAGES = ["portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
-              "webcve", "xss", "sqli", "cred", "wp"]
+              "webcve", "moodle", "xss", "sqli", "cred", "wp"]
 
 
 @dataclass
@@ -90,6 +90,12 @@ class Config:
     git_leak: bool = True
     env_leak: bool = True
     backup_leak: bool = True
+    admin_panel_probe: bool = True       # phpMyAdmin / Adminer DB-admin exposure
+    dir_listing_probe: bool = True       # open directory listing (Index of /)
+
+    # --- education-sector system audit (Moodle) ---
+    moodle_enabled: bool = True
+    moodle_min_supported: str = "4.1"    # branches below this are flagged outdated
 
     # --- secrets / API-key leak scanning + API doc exposure ---
     secret_scan: bool = True             # regex-scan JS/HTML for leaked keys/tokens
@@ -162,7 +168,7 @@ class Config:
     timeouts: dict[str, int] = field(default_factory=lambda: {
         "hostdiscovery": 600, "subdomain": 600, "portscan": 3600, "webdisco": 1800,
         "exposures": 300, "secrets": 600, "phpcgi": 1200, "react2shell": 900,
-        "webcve": 600, "xss": 1200, "sqli": 2400, "cred": 1800, "wp": 1200,
+        "webcve": 600, "moodle": 300, "xss": 1200, "sqli": 2400, "cred": 1800, "wp": 1200,
     })
 
     # --- scope safety ---
