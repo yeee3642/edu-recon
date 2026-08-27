@@ -14,6 +14,7 @@ from .config import Config
 from .engine import Engine
 from .report import write_reports
 from .store import RunStore
+from . import gitdump
 
 _DUMP_MAX = 8 * 1024 * 1024        # 8 MiB cap per dumped resource
 _DUMP_CTX = ssl.create_default_context()
@@ -36,6 +37,14 @@ def _dump_slug(url: str) -> str:
     base = (u.netloc + u.path).replace("\\", "/")
     base = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("_") or "resource"
     return base[:120]
+
+
+def _uniq(dirpath: str, name: str) -> str:
+    fn, n = name, 1
+    while os.path.exists(os.path.join(dirpath, fn)):
+        fn = f"{name}.{n}"
+        n += 1
+    return fn
 
 
 def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
@@ -153,35 +162,107 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
             return hosts
 
         def _dump(self, rid, body):
-            """Immediately capture a leaked resource server-side, before it vanishes.
+            """Immediately capture a leak server-side, before it vanishes.
 
-            Scope-locked: only URLs whose host was a target of THIS run may be
-            dumped. Saved raw under runs/<rid>/dumps/ so it survives take-down.
+            Dispatches by finding type: an exposed .git/ is fully dumped and the
+            source reconstructed; a leaked key is captured with its context; any
+            other exposed URL is fetched raw. Scope-locked: only hosts that were
+            targets of THIS run may be touched. Saved under runs/<rid>/dumps/.
             """
+            fid = body.get("finding_id")
             url = (body.get("url") or "").strip()
+            hosts = self._run_hosts(rid)
+            finding = None
+            if fid:
+                for t in (self._run_dict(rid) or {}).get("targets", []):
+                    for f in t.get("findings", []):
+                        if f.get("id") == fid:
+                            finding = f
+                            break
+                    if finding:
+                        break
+            ev = (finding or {}).get("evidence", {}) or {}
+            cat = (finding or {}).get("category", "")
+            if not url:
+                url = ev.get("url", "")
+
+            if url and re.search(r"/\.git($|/)", url, re.I):
+                return self._dump_git(rid, url, hosts)
+            if cat == "secret-leak" and finding and (ev.get("value") or ev.get("match")) \
+                    and not url.rstrip("/").lower().endswith((".env", ".htpasswd", ".bak", ".sql")):
+                return self._dump_key(rid, finding, hosts)
+
             if not url.lower().startswith(("http://", "https://")):
-                return self._send(400, {"error": "bad url"})
+                return self._send(400, {"error": "nothing to dump (no url/value)"})
             host = urlparse(url).hostname or ""
-            if host not in self._run_hosts(rid):
+            if host not in hosts:
                 return self._send(403, {"error": f"out of scope: {host!r} not a target of this run"})
             data, ctype, err = _raw_fetch(url)
             if err:
                 return self._send(502, {"error": f"fetch failed (already taken down?): {err}"})
             dump_dir = os.path.join(cfg.workdir, rid, "dumps")
             os.makedirs(dump_dir, exist_ok=True)
-            stamp = datetime.now().strftime("%H%M%S")
-            fn = f"{stamp}_{_dump_slug(url)}"
-            full = os.path.join(dump_dir, fn)
-            n = 1
-            while os.path.exists(full):
-                fn = f"{stamp}_{_dump_slug(url)}.{n}"; full = os.path.join(dump_dir, fn); n += 1
-            with open(full, "wb") as fh:
+            fn = _uniq(dump_dir, datetime.now().strftime("%H%M%S") + "_" + _dump_slug(url))
+            with open(os.path.join(dump_dir, fn), "wb") as fh:
                 fh.write(data)
             return self._send(200, {
-                "ok": True, "saved": "dumps/" + fn, "size": len(data),
+                "ok": True, "kind": "file", "saved": "dumps/" + fn, "size": len(data),
                 "content_type": ctype, "truncated": len(data) >= _DUMP_MAX,
                 "preview": data[:4096].decode("utf-8", "replace"),
             })
+
+        def _dump_git(self, rid, url, hosts):
+            host = urlparse(url).hostname or ""
+            if host not in hosts:
+                return self._send(403, {"error": f"out of scope: {host!r}"})
+            low = url.lower()
+            base = url[:low.find("/.git")] + "/.git/"
+            stamp = datetime.now().strftime("%H%M%S")
+            out_root = os.path.join(cfg.workdir, rid, "dumps", f"{stamp}_{_dump_slug(host)}_git")
+            os.makedirs(out_root, exist_ok=True)
+
+            def gfetch(u):
+                b, _c, e = _raw_fetch(u)
+                return b, e
+            res = gitdump.dump_git(base, out_root, gfetch)
+            summ = [f"# git dump: {base}",
+                    f"# reconstructed {res['files_reconstructed']} file(s) · "
+                    f"{res['objects']} object(s) · {res['packs']} pack(s)"
+                    + ("  [truncated]" if res["truncated"] else ""), ""]
+            summ += res["sample_files"]
+            if res["packed_only"]:
+                summ.append("\n(objects are packed — run `git` on the saved .git/ to check out)")
+            with open(os.path.join(out_root, "SUMMARY.txt"), "w", encoding="utf-8") as fh:
+                fh.write("\n".join(summ) + "\n")
+            rel = os.path.relpath(out_root, os.path.join(cfg.workdir, rid)).replace("\\", "/")
+            return self._send(200, {"ok": True, "kind": "git", "saved": rel + "/SUMMARY.txt",
+                                    "dir": rel, "files": res["files_reconstructed"],
+                                    "objects": res["objects"], "packs": res["packs"],
+                                    "packed_only": res["packed_only"], "preview": "\n".join(summ)})
+
+        def _dump_key(self, rid, finding, hosts):
+            ev = finding.get("evidence", {}) or {}
+            typ = finding.get("title", "").replace("Leaked secret:", "").strip() or "secret"
+            lines = [f"type: {typ}", f"value: {ev.get('value', '')}",
+                     f"found_in: {ev.get('url', '')}", f"match: {ev.get('match', '')}",
+                     f"severity: {finding.get('severity', '')}"]
+            dump_dir = os.path.join(cfg.workdir, rid, "dumps")
+            os.makedirs(dump_dir, exist_ok=True)
+            stamp = datetime.now().strftime("%H%M%S")
+            fn = _uniq(dump_dir, f"{stamp}_key_{re.sub(r'[^A-Za-z0-9]+', '_', typ)[:40]}.txt")
+            with open(os.path.join(dump_dir, fn), "w", encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+            asset = ""
+            aurl = ev.get("url", "")
+            if aurl.lower().startswith(("http://", "https://")) and (urlparse(aurl).hostname in hosts):
+                data, _c, err = _raw_fetch(aurl)
+                if data:
+                    afn = _uniq(dump_dir, f"{stamp}_{_dump_slug(aurl)}")
+                    with open(os.path.join(dump_dir, afn), "wb") as fh:
+                        fh.write(data)
+                    asset = "dumps/" + afn
+            return self._send(200, {"ok": True, "kind": "key", "saved": "dumps/" + fn,
+                                    "asset": asset, "preview": "\n".join(lines)})
 
         def _toggle_finding(self, rid, body):
             run = store.get(rid)
@@ -462,7 +543,10 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
 const ORDER={critical:4,high:3,medium:2,low:1,info:0};
 const SEVW={critical:100,high:40,medium:12,low:3,info:0};
 const LEAK_CATS=new Set(['vcs-leak','secret-leak','backup-leak','info-leak','api-leak','admin-panel','dir-listing']);
-function dumpable(f){const ev=f.evidence||{};return LEAK_CATS.has(f.category)&&!!ev.url;}
+function dumpable(f){const ev=f.evidence||{};return LEAK_CATS.has(f.category)&&(!!ev.url||!!ev.value);}
+function isGit(f){return /\/\.git($|\/)/i.test((f.evidence||{}).url||'');}
+function isKey(f){const ev=f.evidence||{};return f.category==='secret-leak'&&(ev.value||ev.match)&&!/\.(env|bak|sql|htpasswd)$/i.test((ev.url||'').replace(/\/$/,''));}
+function dumpLabel(f){return isGit(f)?'⤓ Dump .git':isKey(f)?'⤓ Dump key':'⤓ Dump';}
 function fmtSize(n){return n<1024?n+'B':n<1048576?(n/1024).toFixed(1)+'K':(n/1048576).toFixed(1)+'M';}
 function toast(msg){let el=document.getElementById('toast');if(!el){el=document.createElement('div');el.id='toast';document.body.appendChild(el);}
  el.textContent=msg;el.className='show';clearTimeout(window._tt);window._tt=setTimeout(()=>{el.className='';},2800);}
@@ -529,7 +613,7 @@ function renderTarget(rid,t){const stages=Object.values(t.stages||{});
    <td><div>${esc(f.title)}</div>
      <details class="ev"><summary>evidence ▾</summary><div class="evbody">${esc(JSON.stringify(ev,null,2))}</div>${arts?`<div class="arts">${arts}</div>`:''}</details></td>
    <td>${prim?`<code>${esc((''+prim).slice(0,120))}</code>`:'<span class="muted">—</span>'}</td>
-   <td>${dumpable(f)?`<button class="btn sm dump" onclick="dumpLeak('${rid}','${encodeURIComponent(ev.url)}',this)" title="伺服器端立刻抓存這個洩漏">⤓ Dump</button> `:''}<button class="btn sm ghost" onclick="fp('${rid}','${f.id}',${!f.false_positive})">${f.false_positive?'↺':'FP'}</button></td></tr>`;}).join('');
+   <td>${dumpable(f)?`<button class="btn sm dump" onclick="dumpLeak('${rid}','${f.id}',this)" title="伺服器端立刻抓存這個洩漏">${dumpLabel(f)}</button> `:''}<button class="btn sm ghost" onclick="fp('${rid}','${f.id}',${!f.false_positive})">${f.false_positive?'↺':'FP'}</button></td></tr>`;}).join('');
  const ports=(t.services||[]).map(x=>x.port+'/'+esc(x.name||'?')).join(' · ')||'—';
  return `<div class="card tgt"><div class="tgthead">
    <span class="host">${esc(t.host)}</span>
@@ -544,21 +628,25 @@ function tgl(k){FILT.has(k)?FILT.delete(k):FILT.add(k);if(LAST)renderDetail(LAST
 async function cancelRun(){if(!CUR)return;await api('POST','/api/runs/'+CUR+'/cancel');refreshDetail();}
 async function fp(rid,fid,v){await api('POST','/api/runs/'+rid+'/finding',{finding_id:fid,false_positive:v});refreshDetail();}
 /* ---- leak dump (capture-now, server-side) ---- */
-async function dumpLeak(rid,encurl,btn){const url=decodeURIComponent(encurl);
+async function dumpLeak(rid,fid,btn){
  if(btn){btn.disabled=true;btn.textContent='dumping…';}
- const r=await api('POST','/api/runs/'+rid+'/dump',{url});
- if(r&&r.ok){if(btn){btn.textContent='✓ '+fmtSize(r.size);btn.classList.add('done');btn.disabled=false;}
-   toast('已抓存 '+r.saved+' ('+fmtSize(r.size)+')');
-   openArtifact(rid,encodeURIComponent(r.saved));return true;}
+ const r=await api('POST','/api/runs/'+rid+'/dump',{finding_id:fid});
+ if(r&&r.ok){
+   let label='✓',msg='';
+   if(r.kind==='git'){label='✓ '+r.files+'檔';msg='git dump：重建 '+r.files+' 檔・'+r.objects+' obj → '+r.dir;}
+   else if(r.kind==='key'){label='✓ key';msg='已抓存金鑰 → '+r.saved+(r.asset?'（含來源檔）':'');}
+   else{label='✓ '+fmtSize(r.size);msg='已抓存 '+r.saved+' ('+fmtSize(r.size)+')';}
+   if(btn){btn.textContent=label;btn.classList.add('done');btn.disabled=false;}
+   toast(msg);openArtifact(rid,encodeURIComponent(r.saved));return true;}
  if(btn){btn.textContent='✗ 失敗';btn.disabled=false;}
  toast((r&&r.error)||'dump 失敗（可能已被下架）');return false;}
-async function dumpAll(){if(!CUR||!LAST)return;const urls=[];
- for(const t of (LAST.targets||[]))for(const f of (t.findings||[]))if(!f.false_positive&&dumpable(f))urls.push((f.evidence||{}).url);
- const uniq=[...new Set(urls)].filter(Boolean);
+async function dumpAll(){if(!CUR||!LAST)return;const ids=[];
+ for(const t of (LAST.targets||[]))for(const f of (t.findings||[]))if(!f.false_positive&&dumpable(f))ids.push(f.id);
+ const uniq=[...new Set(ids)];
  if(!uniq.length)return toast('沒有可 dump 的 leak');
- toast('dumping '+uniq.length+' 個 leak…');let ok=0,sz=0;
- for(const u of uniq){const r=await api('POST','/api/runs/'+CUR+'/dump',{url:u});if(r&&r.ok){ok++;sz+=r.size||0;}}
- toast('已抓存 '+ok+'/'+uniq.length+' 個 leak（'+fmtSize(sz)+'）→ runs/'+CUR+'/dumps/');}
+ toast('dumping '+uniq.length+' 個 leak…');let ok=0;
+ for(const id of uniq){const r=await api('POST','/api/runs/'+CUR+'/dump',{finding_id:id});if(r&&r.ok)ok++;}
+ toast('已抓存 '+ok+'/'+uniq.length+' 個 leak → runs/'+CUR+'/dumps/');}
 async function mkReport(){if(!CUR)return;const r=await api('POST','/api/runs/'+CUR+'/report');
  if(r&&r.report&&r.report.html)window.open('/api/runs/'+CUR+'/artifact?path='+encodeURIComponent(r.report.html),'_blank');
  else alert('報告尚未就緒');}
