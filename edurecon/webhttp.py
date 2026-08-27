@@ -26,14 +26,22 @@ def _opener():
 
 
 def request(url: str, *, method: str = "GET", data: dict | None = None,
+            raw: bytes | str | None = None,
             timeout: int = 12, ua: str = "edu-recon",
             headers: dict | None = None, max_bytes: int = 8192):
-    """Return (status:int, headers:dict, body:str). status 0 on transport error."""
+    """Return (status:int, headers:dict, body:str). status 0 on transport error.
+
+    raw: send this exact body (bytes/str) instead of urlencoding `data` — needed
+    for probes that POST a raw payload (e.g. PHPUnit eval-stdin PHP source).
+    """
     body_bytes = None
     hdrs = {"User-Agent": ua}
     if headers:
         hdrs.update(headers)
-    if data is not None and method.upper() == "POST":
+    if raw is not None and method.upper() == "POST":
+        body_bytes = raw.encode() if isinstance(raw, str) else raw
+        hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
+    elif data is not None and method.upper() == "POST":
         body_bytes = urllib.parse.urlencode(data).encode()
         hdrs.setdefault("Content-Type", "application/x-www-form-urlencoded")
     req = urllib.request.Request(url, data=body_bytes, headers=hdrs,

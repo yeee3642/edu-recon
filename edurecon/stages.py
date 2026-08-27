@@ -19,6 +19,7 @@ from .context import StageCtx
 from .models import Service, WebPath
 from . import parse, webhttp, webscan
 from . import secrets as secretscan
+from . import cveprobes
 
 # nmap service name / port  ->  hydra module
 HYDRA_MODULES = {
@@ -517,6 +518,36 @@ def _react2shell_paths(ts, cfg: Config) -> list[str]:
         if p not in paths:
             paths.append(p)
     return paths
+
+
+def stage_webcve(ctx: StageCtx) -> None:
+    """Built-in non-destructive safe-check probes for famous web CVEs.
+
+    Runs entirely in-process (no external tool): PHPUnit eval-stdin (2017-9841),
+    Apache traversal (2021-41773), Struts2 S2-045 (2017-5638), Confluence OGNL
+    (2022-26134), Drupalgeddon2 (2018-7600) and Next.js middleware bypass
+    (2025-29927). Each proves exploitability with a benign oracle only.
+    """
+    cfg = ctx.cfg
+    if not cfg.webcve_enabled:
+        ctx.ts.stage("webcve").note = "disabled"
+        return
+    bases = _root_bases(ctx.ts)
+    if not bases:
+        ctx.ts.stage("webcve").note = "no http service"
+        return
+    found = 0
+    for base in bases:
+        if ctx.aborted():
+            return
+        ctx.scope.check(ctx.ts.host)
+        for hit in cveprobes.run_probes(base, cfg, aborted=ctx.aborted):
+            found += 1
+            ctx.finding(stage="webcve", category="cve", title=hit["title"],
+                        severity=hit["severity"], confidence=hit["confidence"],
+                        evidence={"cve": hit["cve"], "url": hit["url"],
+                                  **hit.get("evidence", {})})
+    ctx.ts.stage("webcve").note = f"{found} CVE hit(s)"
 
 
 def stage_sqli(ctx: StageCtx, candidate_only: bool = False) -> None:

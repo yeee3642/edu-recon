@@ -33,6 +33,15 @@ react2shell_insecure: true      # tolerate self-signed certs on internal targets
 react2shell_windows: false      # use whoami instead of id when command == id
 react2shell_target_timeout: 25
 
+# --- built-in famous-CVE safe-check probes (non-destructive; no external tool) ---
+webcve_enabled: true
+webcve_phpunit: true            # CVE-2017-9841  PHPUnit eval-stdin.php RCE
+webcve_apache_traversal: true   # CVE-2021-41773 Apache 2.4.49 path traversal / LFI
+webcve_struts2: true            # CVE-2017-5638  Struts2 S2-045 OGNL RCE
+webcve_confluence: true         # CVE-2022-26134 Confluence OGNL pre-auth RCE
+webcve_drupalgeddon2: true      # CVE-2018-7600  Drupalgeddon2 RCE
+webcve_nextjs_mw: true          # CVE-2025-29927 Next.js middleware auth bypass
+
 # --- nmap ---
 nmap_top_ports: 1000      # set 0 for a full -p- scan
 nmap_min_rate: 1500

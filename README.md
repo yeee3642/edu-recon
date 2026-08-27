@@ -22,6 +22,9 @@ targets ─▶ expand (CIDR ping-sweep, subdomain enum)
              phpcgi     CVE-2024-4577 / 8926  via Night-have-dreams/php-cgi-Injector
              react2shell CVE-2025-55182 React Server Components RCE
                         via hidden-investigations/react2shell-scanner (safe-check by default)
+             webcve     built-in non-destructive safe-check probes for famous CVEs:
+                        PHPUnit 2017-9841 · Apache-traversal 2021-41773 · Struts2 2017-5638
+                        · Confluence 2022-26134 · Drupalgeddon2 2018-7600 · Next.js 2025-29927
              xss        dalfox + built-in reflected-XSS canary
              sqli       built-in SQL-error quick pass  +  sqlmap deep
              cred       hydra weak/default passwords (ssh/ftp/rdp/db/…)
@@ -64,7 +67,7 @@ python recon.py scan -t targets.txt --intensity full
 | level    | what runs |
 |----------|-----------|
 | `full`   | everything, injection + weak-password executed (default) |
-| `recon`  | phpcgi + react2shell + XSS + exposures run; **sqli/cred only list candidates** |
+| `recon`  | phpcgi + react2shell + webcve + XSS + exposures run; **sqli/cred only list candidates** |
 | `passive`| portscan + webdisco + exposures + secrets (benign GETs only) |
 
 ## Config
@@ -85,6 +88,7 @@ edurecon/
   stages.py           every scan stage
   webscan.py          crawler + reflected-XSS + SQL-error heuristics
   secrets.py          key-leak regexes + API-doc/GraphQL probes
+  cveprobes.py        built-in non-destructive famous-CVE safe-check probes
   parse.py            nmap/dirsearch/sqlmap/hydra/phpcgi/react2shell parsers
   triage.py           service inference, soft-404 filter, dedupe, ranking
   report.py           JSON / Markdown / HTML export

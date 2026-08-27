@@ -23,16 +23,16 @@ EXPANSION_STAGES = ["hostdiscovery", "subdomain"]
 INTENSITY_STAGES = {
     # passive: never touches auth or injection; benign GETs + fingerprinting only
     "passive": {"portscan", "webdisco", "exposures", "secrets"},
-    # recon: phpcgi + react2shell + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
+    # recon: phpcgi + react2shell + webcve + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
     "recon": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
-              "wp", "xss", "sqli_candidate", "cred_candidate"},
+              "webcve", "wp", "xss", "sqli_candidate", "cred_candidate"},
     # full: everything runs for real
     "full": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
-             "wp", "xss", "sqli", "cred"},
+             "webcve", "wp", "xss", "sqli", "cred"},
 }
 
 ALL_STAGES = ["portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
-              "xss", "sqli", "cred", "wp"]
+              "webcve", "xss", "sqli", "cred", "wp"]
 
 
 @dataclass
@@ -122,6 +122,15 @@ class Config:
     react2shell_windows: bool = False    # use whoami instead of id when command == id
     react2shell_target_timeout: int = 25  # per-URL request timeout
 
+    # --- built-in famous-CVE safe-check probes (non-destructive; no ext tool) ---
+    webcve_enabled: bool = True
+    webcve_phpunit: bool = True           # CVE-2017-9841  PHPUnit eval-stdin RCE
+    webcve_apache_traversal: bool = True  # CVE-2021-41773 Apache path traversal/LFI
+    webcve_struts2: bool = True           # CVE-2017-5638  Struts2 S2-045 OGNL RCE
+    webcve_confluence: bool = True        # CVE-2022-26134 Confluence OGNL RCE
+    webcve_drupalgeddon2: bool = True     # CVE-2018-7600  Drupalgeddon2 RCE
+    webcve_nextjs_mw: bool = True         # CVE-2025-29927 Next.js middleware auth bypass
+
     # --- crawler (feeds sqli + xss with param URLs / forms) ---
     crawl_max_pages: int = 40
     crawl_max_targets: int = 40          # cap param-urls + forms actually injected
@@ -153,7 +162,7 @@ class Config:
     timeouts: dict[str, int] = field(default_factory=lambda: {
         "hostdiscovery": 600, "subdomain": 600, "portscan": 3600, "webdisco": 1800,
         "exposures": 300, "secrets": 600, "phpcgi": 1200, "react2shell": 900,
-        "xss": 1200, "sqli": 2400, "cred": 1800, "wp": 1200,
+        "webcve": 600, "xss": 1200, "sqli": 2400, "cred": 1800, "wp": 1200,
     })
 
     # --- scope safety ---
