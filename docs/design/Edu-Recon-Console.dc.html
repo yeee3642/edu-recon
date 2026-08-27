@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#0B0B09;color:#DAD8C8;font-family:'JetBrains Mono',ui-monospace,monospace;-webkit-font-smoothing:antialiased}
+  a{color:#F2E409;text-decoration:none}
+  a:hover{color:#FFF64D}
+  ::selection{background:rgba(242,228,9,.25);color:#fff}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-track{background:#0B0B09}
+  ::-webkit-scrollbar-thumb{background:#161613;border-radius:2px}
+  ::-webkit-scrollbar-thumb:hover{background:#26261E}
+  textarea,input{font-family:inherit}
+  textarea:focus,input:focus{outline:none}
+  @keyframes erpulse{0%,100%{opacity:.45}50%{opacity:1}}
+  @keyframes erblink{0%,49%{opacity:1}50%,100%{opacity:0}}
+  @keyframes erfade{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+  @keyframes erscan{0%{background-position:0% 0}100%{background-position:-220% 0}}
+  @keyframes erhit{0%,100%{box-shadow:0 0 3px}50%{box-shadow:0 0 13px}}
+  @keyframes erflow{0%{background-position:0 0}100%{background-position:19.8px 0}}
+  @keyframes ersweep{0%{transform:translateX(0);opacity:0}12%{opacity:1}88%{opacity:1}100%{transform:translateX(1000%);opacity:0}}
+</style>
+</helmet>
+<div style="height:100vh;width:100%;display:flex;flex-direction:column;background:#0B0B09;background-image:repeating-linear-gradient(0deg,rgba(0,0,0,.20) 0px,rgba(0,0,0,.20) 1px,transparent 1px,transparent 3px),radial-gradient(1200px 760px at 82% -12%,rgba(255,61,174,.08),transparent 58%),radial-gradient(1000px 680px at -5% 112%,rgba(242,228,9,.06),transparent 55%),linear-gradient(rgba(150,146,120,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(150,146,120,.05) 1px,transparent 1px);background-size:100% 100%,100% 100%,100% 100%,42px 42px,42px 42px;overflow:hidden">
+
+  <!-- ======================= TOP BAR ======================= -->
+  <div style="display:flex;align-items:stretch;height:52px;border-bottom:1px solid rgba(150,146,120,.16);background:#101010;flex:none">
+    <div style="display:flex;align-items:center;gap:10px;padding:0 18px;border-right:1px solid rgba(150,146,120,.12)">
+      <div style="width:9px;height:9px;background:#F2E409;box-shadow:0 0 0 3px rgba(242,228,9,.12),0 0 12px rgba(242,228,9,.75)"></div>
+      <span style="font-weight:800;letter-spacing:1px;color:#F2E409;text-shadow:0 0 10px rgba(242,228,9,.55);font-size:14px">edu-recon</span>
+      <span style="font-size:9px;color:#4E4C3C;letter-spacing:1px;align-self:flex-start;margin-top:12px">v3</span>
+    </div>
+
+    <sc-if value="{{ demoMode }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;align-items:center;gap:8px;padding:0 16px;border-right:1px solid rgba(150,146,120,.12)">
+      <span style="font-size:9px;font-weight:800;letter-spacing:1px;color:#FF3DAE">◈ DEMO</span>
+      <span style="font-size:10px;color:#82806A">不鎖範圍 · scope off</span>
+    </div>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:14px;padding:0 16px;flex:1">
+      <span style="font-size:10px;color:#4E4C3C;letter-spacing:1px">INTENSITY</span>
+      <span style="font-size:11px;font-weight:700;color:#FF3DAE">{{ intensityUp }}</span>
+      <span style="width:1px;height:20px;background:rgba(150,146,120,.14)"></span>
+      <span style="width:7px;height:7px;border-radius:50%;background:{{ phaseC }}"></span>
+      <span style="font-size:11px;font-weight:700;letter-spacing:1px;color:{{ phaseC }}">{{ phaseLabel }}</span>
+      <span style="font-size:10px;color:#4E4C3C">▸ elapsed</span>
+      <span style="font-size:12px;color:#DAD8C8;font-weight:600">{{ elapsed }}</span>
+      <span style="font-size:10px;color:#4E4C3C">▸ {{ donePctStr }}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;padding:0 12px">
+      <div onClick="{{ run }}" style="cursor:pointer;padding:7px 14px;border:1px solid {{ runBtn.c }};color:{{ runBtn.c }};font-size:11px;font-weight:700;letter-spacing:1px;background:rgba(242,228,9,.04);clip-path:polygon(0 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%)" style-hover="background:rgba(242,228,9,.12)">{{ runBtn.label }}</div>
+      <div onClick="{{ skip }}" style="cursor:pointer;padding:7px 11px;border:1px solid rgba(150,146,120,.2);color:#82806A;font-size:11px" style-hover="color:#DAD8C8;border-color:rgba(150,146,120,.4)">⏭ SKIP</div>
+      <div onClick="{{ reset }}" style="cursor:pointer;padding:7px 11px;border:1px solid rgba(150,146,120,.2);color:#82806A;font-size:11px" style-hover="color:#FF3D5E;border-color:rgba(255,61,94,.4)">■ RESET</div>
+    </div>
+  </div>
+
+  <!-- ======================= TABS ======================= -->
+  <div style="display:flex;align-items:center;height:38px;border-bottom:1px solid rgba(150,146,120,.16);background:#0B0B09;flex:none;padding:0 8px;gap:2px">
+    <div onClick="{{ goSetup }}" style="cursor:pointer;padding:9px 18px;font-size:11px;letter-spacing:1px;font-weight:600;color:{{ tabs.setup.c }};border-bottom:2px solid {{ tabs.setup.b }};text-shadow:{{ tabs.setup.ts }}" style-hover="color:#DAD8C8">01 · SETUP / 掃描設定</div>
+    <div onClick="{{ goMonitor }}" style="cursor:pointer;padding:9px 18px;font-size:11px;letter-spacing:1px;font-weight:600;color:{{ tabs.monitor.c }};border-bottom:2px solid {{ tabs.monitor.b }};text-shadow:{{ tabs.monitor.ts }}" style-hover="color:#DAD8C8">02 · MONITOR / 即時監控</div>
+    <div onClick="{{ goFindings }}" style="cursor:pointer;padding:9px 18px;font-size:11px;letter-spacing:1px;font-weight:600;color:{{ tabs.findings.c }};border-bottom:2px solid {{ tabs.findings.b }};text-shadow:{{ tabs.findings.ts }}" style-hover="color:#DAD8C8">03 · FINDINGS / 弱點清單</div>
+    <div onClick="{{ goReport }}" style="cursor:pointer;padding:9px 18px;font-size:11px;letter-spacing:1px;font-weight:600;color:{{ tabs.report.c }};border-bottom:2px solid {{ tabs.report.b }};text-shadow:{{ tabs.report.ts }}" style-hover="color:#DAD8C8">04 · REPORT / 匯出報告</div>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:12px;padding-right:14px;font-size:10px">
+      <span style="color:#FF3D5E">■ {{ cCrit }} CRIT</span>
+      <span style="color:#FF7A2A">■ {{ cHigh }} HIGH</span>
+      <span style="color:#F6C63A">■ {{ cMed }} MED</span>
+      <span style="color:#3AA0FF">■ {{ cLow }} LOW</span>
+      <span style="color:#8E8CEA">■ {{ cInfo }} INFO</span>
+    </div>
+  </div>
+
+  <div style="height:2px;flex:none;background:repeating-linear-gradient(45deg,rgba(242,228,9,.6) 0 13px,rgba(11,11,9,0) 13px 26px)"></div>
+  <div style="flex:1;min-height:0;position:relative">
+
+    <!-- ======================= SETUP ======================= -->
+    <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;inset:0;overflow:auto;padding:26px 30px;display:grid;grid-template-columns:1.15fr 1fr;gap:26px;align-content:start">
+      <!-- left: targets + scope -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div>
+          <div style="font-size:11px;color:#4E4C3C;letter-spacing:2px;margin-bottom:4px">STEP 01</div>
+          <div style="font-size:19px;font-weight:800;color:#F1EFE2;letter-spacing:.5px;text-shadow:0 0 16px rgba(242,228,9,.22)">貼上標的 · TARGET LIST</div>
+          <div style="font-size:11px;color:#82806A;margin-top:5px;line-height:1.6">主機 / 網域 / 授權 CIDR,一行一個。</div>
+        </div>
+        <textarea value="{{ targetsText }}" onChange="{{ onText }}" spellcheck="false" style="width:100%;height:150px;background:#101010;border:1px solid rgba(150,146,120,.2);color:#DAD8C8;font-size:13px;line-height:1.7;padding:12px 14px;resize:vertical;letter-spacing:.3px"></textarea>
+
+        <div style="display:flex;flex-direction:column;gap:5px">
+          <sc-for list="{{ parsedRows }}" as="p" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:{{ p.bg }};border:1px solid {{ p.bd }}">
+              <span style="width:52px;font-size:9px;color:#4E4C3C;letter-spacing:1px;text-transform:uppercase">{{ p.kind }}</span>
+              <span style="flex:1;font-size:12px;color:#DAD8C8">{{ p.host }}</span>
+
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <!-- right: intensity + pipeline preview -->
+      <div style="display:flex;flex-direction:column;gap:20px">
+        <div>
+          <div style="font-size:11px;color:#4E4C3C;letter-spacing:2px;margin-bottom:4px">STEP 02</div>
+          <div style="font-size:19px;font-weight:800;color:#F1EFE2;letter-spacing:.5px;text-shadow:0 0 16px rgba(242,228,9,.22)">選擇強度 · INTENSITY</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ intens }}" as="i" hint-placeholder-count="3">
+            <div onClick="{{ i.click }}" style="cursor:pointer;padding:13px 15px;border:1px solid {{ i.bd }};background:rgba(242,228,9,.03);display:flex;align-items:center;gap:14px" style-hover="border-color:rgba(242,228,9,.5)">
+              <span style="width:14px;height:14px;border:1px solid {{ i.c }};display:flex;align-items:center;justify-content:center"><span style="width:7px;height:7px;background:{{ i.c }}"></span></span>
+              <span style="font-size:14px;font-weight:800;letter-spacing:1px;color:{{ i.c }};width:78px">{{ i.name }}</span>
+              <span style="flex:1;font-size:11px;color:#8F8B72">{{ i.cn }}</span>
+              <span style="font-size:9px;color:#4E4C3C;border:1px solid rgba(150,146,120,.2);padding:2px 7px;letter-spacing:1px">{{ i.tag }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#4E4C3C;letter-spacing:2px;margin-bottom:8px">PIPELINE · 此強度下執行的 STAGE</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:5px">
+            <sc-for list="{{ stagePrev }}" as="sg" hint-placeholder-count="14">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 9px;border:1px solid rgba(150,146,120,.1);background:#101010">
+                <span style="width:5px;height:5px;border-radius:50%;background:{{ sg.c }}"></span>
+                <span style="font-size:10px;font-weight:700;color:{{ sg.c }};width:42px">{{ sg.s }}</span>
+                <span style="flex:1;font-size:10px;color:#8F8B72;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sg.cn }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:9px;color:#4E4C3C;margin-top:9px;line-height:1.7"><span style="color:#F2E409">●</span> 被動探測　<span style="color:#FF3DAE">●</span> 主動注入 / 攻擊　<span style="color:#4E4C3C">●</span> 此強度略過</div>
+        </div>
+        <div onClick="{{ run }}" style="cursor:pointer;margin-top:4px;padding:15px;text-align:center;border:1px solid {{ runBtn.c }};background:rgba(242,228,9,.06);color:{{ runBtn.c }};font-size:14px;font-weight:800;letter-spacing:2px;clip-path:polygon(0 0,100% 0,100% calc(100% - 13px),calc(100% - 13px) 100%,0 100%)" style-hover="background:rgba(242,228,9,.14)">{{ runBtn.label }} →</div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ======================= MONITOR ======================= -->
+    <sc-if value="{{ isMonitor }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;padding:14px 16px;gap:12px;overflow:hidden">
+      <!-- KPI strip -->
+      <div style="display:flex;gap:10px;flex:none">
+        <div style="flex:1;border:1px solid rgba(150,146,120,.14);background:#101010;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);padding:10px 14px">
+          <div style="font-size:9px;color:#4E4C3C;letter-spacing:1px">TARGETS</div>
+          <div style="font-size:20px;font-weight:800;color:#DAD8C8;margin-top:2px">{{ targetsDone }}<span style="font-size:12px;color:#4E4C3C">/{{ targetsTotal }}</span></div>
+        </div>
+        <div style="flex:1;border:1px solid rgba(150,146,120,.14);background:#101010;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);padding:10px 14px">
+          <div style="font-size:9px;color:#4E4C3C;letter-spacing:1px">PROGRESS</div>
+          <div style="font-size:20px;font-weight:800;color:#FF3DAE;margin-top:2px">{{ donePctStr }}</div>
+          <div style="height:3px;background:rgba(150,146,120,.14);margin-top:5px"><div style="height:100%;width:{{ donePctStr }};background:repeating-linear-gradient(45deg,#FF3DAE 0 7px,#FF7ECB 7px 14px);box-shadow:0 0 8px rgba(255,61,174,.7);animation:{{ barAnim }}"></div></div>
+        </div>
+        <div style="flex:2;border:1px solid rgba(150,146,120,.14);background:#101010;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);padding:10px 14px;display:flex;align-items:center;gap:18px">
+          <div><div style="font-size:9px;color:#4E4C3C;letter-spacing:1px">FINDINGS</div><div style="font-size:20px;font-weight:800;color:#DAD8C8;margin-top:2px">{{ totalFindings }}</div></div>
+          <div style="display:flex;gap:14px;flex:1">
+            <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#FF3D5E">{{ cCrit }}</div><div style="font-size:8px;color:#4E4C3C;letter-spacing:1px">CRIT</div></div>
+            <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#FF7A2A">{{ cHigh }}</div><div style="font-size:8px;color:#4E4C3C;letter-spacing:1px">HIGH</div></div>
+            <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#F6C63A">{{ cMed }}</div><div style="font-size:8px;color:#4E4C3C;letter-spacing:1px">MED</div></div>
+            <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#3AA0FF">{{ cLow }}</div><div style="font-size:8px;color:#4E4C3C;letter-spacing:1px">LOW</div></div>
+            <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#8E8CEA">{{ cInfo }}</div><div style="font-size:8px;color:#4E4C3C;letter-spacing:1px">INFO</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 320px;gap:12px">
+        <!-- left: matrix + log -->
+        <div style="display:flex;flex-direction:column;gap:12px;min-height:0">
+          <!-- matrix -->
+          <div style="flex:1;min-height:0;border:1px solid rgba(150,146,120,.14);background:#101010;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;border-bottom:1px solid rgba(150,146,120,.12);flex:none">
+              <span style="font-size:10px;color:#8F8B72;letter-spacing:1px">PIPELINE MATRIX · 標的 × STAGE　<span style="color:#4E4C3C">(點色塊看原始 log)</span></span>
+              <span style="font-size:9px;color:#4E4C3C">{{ layout }}</span>
+            </div>
+            <div style="flex:1;min-height:0;overflow:auto;padding:10px 13px;position:relative">
+              <sc-if value="{{ sweepOn }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;top:0;bottom:0;left:-120px;width:120px;pointer-events:none;z-index:2;background:linear-gradient(90deg,transparent,rgba(242,228,9,.14),transparent);animation:ersweep 2.4s linear infinite"></div></sc-if>
+              <sc-if value="{{ isMatrix }}" hint-placeholder-val="{{ true }}">
+              <div>
+                <!-- header -->
+                <div style="display:grid;grid-template-columns:190px repeat(14,1fr);gap:3px;margin-bottom:4px;position:sticky;top:0;background:#101010;padding-bottom:3px">
+                  <div></div>
+                  <sc-for list="{{ stageHeads }}" as="h" hint-placeholder-count="14">
+                    <div title="{{ h.name }}" style="font-size:8px;color:#82806A;text-align:center;letter-spacing:.3px;font-weight:600;transform:rotate(-90deg);height:34px;display:flex;align-items:center;justify-content:center;white-space:nowrap">{{ h.s }}</div>
+                  </sc-for>
+                </div>
+                <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+                  <div style="display:grid;grid-template-columns:190px repeat(14,1fr);gap:3px;margin-bottom:3px;align-items:center">
+                    <div style="display:flex;flex-direction:column;gap:1px;padding-right:8px;overflow:hidden">
+                      <div style="display:flex;align-items:center;gap:6px">
+                        <span style="width:5px;height:5px;border-radius:50%;background:{{ r.stateC }};flex:none"></span>
+                        <span style="font-size:11px;color:#DAD8C8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.host }}</span>
+                      </div>
+                      <span style="font-size:8px;color:#4E4C3C;padding-left:11px">{{ r.note }} · {{ r.pctStr }}</span>
+                    </div>
+                    <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="14">
+                      <div onClick="{{ c.click }}" title="{{ c.name }} · {{ c.v }}" style="height:26px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.col }};box-shadow:{{ c.glow }};cursor:pointer;animation:{{ c.anim }}" style-hover="outline:1px solid rgba(242,228,9,.5);outline-offset:-1px"></div>
+                    </sc-for>
+                  </div>
+                </sc-for>
+                <div style="display:flex;gap:16px;margin-top:12px;font-size:9px;color:#4E4C3C;flex-wrap:wrap">
+                  <span><span style="display:inline-block;width:10px;height:10px;border:1px solid rgba(150,146,120,.3);vertical-align:middle"></span> pending</span>
+                  <span><span style="display:inline-block;width:10px;height:10px;background:#FF3DAE;vertical-align:middle"></span> running</span>
+                  <span><span style="display:inline-block;width:10px;height:10px;background:#15707F;vertical-align:middle"></span> clean</span>
+                  <span><span style="display:inline-block;width:10px;height:10px;background:#FF3D5E;vertical-align:middle"></span> hit(依嚴重度)</span>
+                  <span><span style="display:inline-block;width:10px;height:10px;background:repeating-linear-gradient(45deg,rgba(150,146,120,.3) 0 3px,transparent 3px 6px);vertical-align:middle"></span> skip</span>
+                </div>
+              </div>
+              </sc-if>
+              <!-- rail layout -->
+              <sc-if value="{{ isRailLayout }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+                      <span style="width:6px;height:6px;border-radius:50%;background:{{ r.stateC }}"></span>
+                      <span style="font-size:12px;color:#DAD8C8">{{ r.host }}</span>
+                      <span style="font-size:9px;color:#4E4C3C">{{ r.note }}</span>
+                      <span style="flex:1"></span>
+                      <span style="font-size:10px;color:{{ r.stateC }}">{{ r.state }} · {{ r.pctStr }}</span>
+                    </div>
+                    <div style="display:flex;gap:3px;align-items:center">
+                      <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="14">
+                        <div onClick="{{ c.click }}" title="{{ c.name }}" style="flex:1;height:20px;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.col }};box-shadow:{{ c.glow }};animation:{{ c.anim }};cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center" style-hover="outline:1px solid rgba(242,228,9,.5);outline-offset:-1px"><span style="font-size:7px;color:rgba(8,6,15,.65);font-weight:700">{{ c.s }}</span></div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              </sc-if>
+            </div>
+          </div>
+          <!-- log terminal -->
+          <div style="height:230px;flex:none;border:1px solid rgba(150,146,120,.14);background:#070707;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);display:flex;flex-direction:column">
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid rgba(150,146,120,.12);flex:none">
+              <span style="width:7px;height:7px;border-radius:50%;background:#F2E409"></span>
+              <span style="font-size:10px;color:#8F8B72;letter-spacing:1px">LIVE LOG · edu-recon@orchestrator</span>
+              <span style="flex:1"></span>
+              <span style="font-size:9px;color:#4E4C3C">stream · {{ elapsed }}</span>
+            </div>
+            <div id="er-log" style="flex:1;min-height:0;overflow:auto;padding:8px 12px;font-size:11px;line-height:1.65">
+              <sc-for list="{{ logs }}" as="l" hint-placeholder-count="10">
+                <div style="display:flex;gap:8px;animation:erfade .18s ease">
+                  <span style="color:{{ l.tagC }};flex:none;min-width:52px">{{ l.tag }}</span>
+                  <span style="color:{{ l.c }};white-space:pre-wrap;word-break:break-all">{{ l.prefix }}{{ l.text }}</span>
+                </div>
+              </sc-for>
+              <div style="display:flex;gap:8px"><span style="color:#F2E409">❯</span><span style="width:8px;height:14px;background:#F2E409;box-shadow:0 0 8px #F2E409;animation:erblink 1s step-end infinite"></span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- right: live findings feed -->
+        <div style="border:1px solid rgba(150,146,120,.14);background:#101010;clip-path:polygon(0 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%);display:flex;flex-direction:column;min-height:0">
+          <div style="padding:9px 13px;border-bottom:1px solid rgba(150,146,120,.12);flex:none;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:10px;color:#8F8B72;letter-spacing:1px">LIVE FINDINGS</span>
+            <span onClick="{{ goFindings }}" style="cursor:pointer;font-size:9px;color:#F2E409">全部 →</span>
+          </div>
+          <div style="flex:1;min-height:0;overflow:auto;padding:8px">
+            <sc-if value="{{ hasFeed }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ feed }}" as="f" hint-placeholder-count="8">
+                <div style="border:1px solid rgba(150,146,120,.12);border-left:3px solid {{ f.c }};padding:8px 10px;background:#070707;animation:erfade .2s ease">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
+                    <span style="font-size:8px;font-weight:800;color:{{ f.c }};letter-spacing:.5px">{{ f.k }}</span>
+                    <span style="font-size:9px;color:#4E4C3C">CVSS {{ f.cvss }}</span>
+                    <span style="flex:1"></span>
+                    <span style="font-size:8px;color:#4E4C3C">{{ f.cve }}</span>
+                  </div>
+                  <div style="font-size:11px;color:#DAD8C8;line-height:1.4">{{ f.title }}</div>
+                  <div style="font-size:9px;color:#82806A;margin-top:3px">{{ f.host }}</div>
+                </div>
+              </sc-for>
+            </div>
+            </sc-if>
+            <sc-if value="{{ running }}" hint-placeholder-val="{{ false }}"></sc-if>
+          </div>
+        </div>
+      </div>
+
+      <!-- done banner -->
+      <sc-if value="{{ banner }}" hint-placeholder-val="{{ false }}">
+      <div style="position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:16px;padding:12px 22px;background:#101010;border:1px solid #F2E409;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+        <span style="width:8px;height:8px;border-radius:50%;background:#F2E409"></span>
+        <span style="font-size:12px;color:#DAD8C8">{{ bannerText }}</span>
+        <span onClick="{{ goFindings }}" style="cursor:pointer;font-size:11px;font-weight:700;color:#F2E409;border:1px solid #F2E409;padding:6px 14px" style-hover="background:rgba(242,228,9,.12)">檢視 FINDINGS →</span>
+      </div>
+      </sc-if>
+    </div>
+    </sc-if>
+
+    <!-- ======================= FINDINGS ======================= -->
+    <sc-if value="{{ isFindings }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden">
+      <!-- toolbar -->
+      <div style="flex:none;border-bottom:1px solid rgba(150,146,120,.14);padding:12px 18px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#4E4C3C;letter-spacing:1px">SEVERITY</span>
+          <sc-for list="{{ sevChips }}" as="c" hint-placeholder-count="5">
+            <div onClick="{{ c.click }}" style="cursor:pointer;display:flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid {{ c.chipBd }};background:{{ c.chipBg }};font-size:10px;font-weight:700;letter-spacing:.5px;color:{{ c.chipC }}">
+              <span style="width:8px;height:8px;background:{{ c.c }};opacity:{{ c.dot }}"></span>{{ c.label }} <span style="color:#4E4C3C;font-weight:400">{{ c.n }}</span>
+            </div>
+          </sc-for>
+          <span style="flex:1"></span>
+          <input value="{{ q }}" onInput="{{ onQ }}" placeholder="搜尋 title / host / CVE…" style="width:220px;background:#101010;border:1px solid rgba(150,146,120,.2);color:#DAD8C8;font-size:11px;padding:7px 11px" />
+        </div>
+        <div style="display:flex;align-items:center;gap:14px">
+          <span style="font-size:11px;color:#4E4C3C;letter-spacing:1px">STATUS</span>
+          <sc-for list="{{ statChips }}" as="c" hint-placeholder-count="5">
+            <div onClick="{{ c.click }}" style="cursor:pointer;font-size:10px;letter-spacing:.5px;color:{{ c.c }};border-bottom:1px solid {{ c.bd }};padding-bottom:2px">{{ c.l }}</div>
+          </sc-for>
+          <span style="flex:1"></span>
+          <span style="font-size:11px;color:#4E4C3C;letter-spacing:1px">SORT</span>
+          <span onClick="{{ sortSev }}" style="cursor:pointer;font-size:10px;color:{{ sortSevC }}">SEVERITY</span>
+          <span onClick="{{ sortCvss }}" style="cursor:pointer;font-size:10px;color:{{ sortCvssC }}">CVSS</span>
+          <span onClick="{{ dumpAll }}" style="cursor:pointer;font-size:10px;font-weight:700;color:#FF3DAE;border:1px solid rgba(255,61,174,.5);padding:6px 11px" style-hover="background:rgba(255,61,174,.1)">⤓ Dump 全部洩漏</span>
+          <span onClick="{{ clearDumps }}" style="cursor:pointer;font-size:10px;color:#82806A;border:1px solid rgba(150,146,120,.25);padding:6px 11px" style-hover="color:#DAD8C8">🧹 清除 dumps</span>
+          <span onClick="{{ goReport }}" style="cursor:pointer;font-size:10px;font-weight:700;color:#F2E409;border:1px solid #F2E409;padding:6px 13px" style-hover="background:rgba(242,228,9,.12)">匯出報告 →</span>
+        </div>
+      </div>
+      <!-- table head -->
+      <div style="flex:none;display:grid;grid-template-columns:88px 60px 1fr 200px 150px 120px;gap:12px;padding:8px 18px;border-bottom:1px solid rgba(150,146,120,.12);font-size:9px;color:#4E4C3C;letter-spacing:1px">
+        <div>SEVERITY</div><div>CVSS</div><div>FINDING</div><div>TARGET</div><div>STAGE / CVE</div><div>STATUS</div>
+      </div>
+      <!-- rows -->
+      <div style="flex:1;min-height:0;overflow:auto">
+        <sc-for list="{{ list }}" as="f" hint-placeholder-count="10">
+          <div style="border-bottom:1px solid rgba(150,146,120,.08)">
+            <div onClick="{{ f.click }}" style="display:grid;grid-template-columns:88px 60px 1fr 200px 150px 120px;gap:12px;padding:12px 18px;cursor:pointer;align-items:center" style-hover="background:rgba(150,146,120,.04)">
+              <div><span style="font-size:9px;font-weight:800;letter-spacing:.5px;color:#0B0B09;background:{{ f.c }};padding:3px 7px">{{ f.k }}</span></div>
+              <div style="font-size:13px;font-weight:700;color:{{ f.c }}">{{ f.cvss }}</div>
+              <div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:12px;color:#F1EFE2;font-weight:600">{{ f.title }}</span><sc-if value="{{ f.sens }}" hint-placeholder-val="{{ false }}"><span style="font-size:8px;font-weight:800;letter-spacing:.5px;color:#FF3DAE;border:1px solid rgba(255,61,174,.5);padding:1px 5px">🔒 SENSITIVE</span></sc-if></div><div style="font-size:10px;color:#82806A;margin-top:2px">{{ f.cn }}</div></div>
+              <div style="font-size:11px;color:#DAD8C8;word-break:break-all">{{ f.host }}</div>
+              <div style="font-size:10px;color:#8F8B72">{{ f.sid }}<br><span style="color:#4E4C3C">{{ f.cve }}</span></div>
+              <div><span style="font-size:9px;font-weight:700;letter-spacing:.5px;color:{{ f.statC }};border:1px solid {{ f.statC }};padding:3px 8px">{{ f.statLabel }}</span></div>
+            </div>
+            <!-- expanded evidence -->
+            <sc-if value="{{ f.open }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:0 18px 20px 18px;display:grid;grid-template-columns:1.3fr 1fr;gap:18px;background:#070707;animation:erfade .18s ease">
+              <div style="padding-top:14px">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                  <span style="font-size:10px;color:#3AA0FF;letter-spacing:1px">◈ SAFE-CHECK ORACLE · {{ f.ok }}</span>
+                  <span style="flex:1"></span>
+                  <sc-if value="{{ f.sens }}" hint-placeholder-val="{{ false }}"><span onClick="{{ f.toggleReveal }}" style="cursor:pointer;font-size:9px;font-weight:700;color:#FF3DAE;border:1px solid rgba(255,61,174,.5);padding:3px 8px">{{ f.revealTxt }}</span></sc-if>
+                </div>
+                <div style="font-size:10px;color:#8F8B72;margin-bottom:8px">{{ f.okLabel }}</div>
+                <div style="border:1px solid rgba(150,146,120,.16);background:#0B0B09;padding:12px 14px">
+                  <div style="font-size:11px;color:#F2E409;margin-bottom:8px;word-break:break-all">❯ {{ f.cmd }}</div>
+                  <sc-for list="{{ f.proofView }}" as="p" hint-placeholder-count="3">
+                    <div style="font-size:11px;color:#DAD8C8;line-height:1.7;word-break:break-all">{{ p }}</div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="padding-top:14px;display:flex;flex-direction:column;gap:11px">
+                <div style="display:grid;grid-template-columns:auto 1fr;gap:5px 12px;font-size:11px">
+                  <span style="color:#4E4C3C">URL</span><span style="color:#DAD8C8;word-break:break-all">{{ f.url }}</span>
+                  <span style="color:#4E4C3C">TOOL</span><span style="color:#DAD8C8">{{ f.tool }}</span>
+                  <span style="color:#4E4C3C">STAGE</span><span style="color:#DAD8C8">{{ f.sid }}</span>
+                  <span style="color:#4E4C3C">CVE / CVSS</span><span style="color:#DAD8C8">{{ f.cve }} · {{ f.cvss }}</span>
+                </div>
+                <div>
+                  <div style="font-size:10px;color:#4E4C3C;letter-spacing:1px;margin-bottom:4px">REMEDIATION / 修補建議</div>
+                  <div style="font-size:11px;color:#C8C6B4;line-height:1.65">{{ f.rem }}</div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:2px;flex-wrap:wrap">
+                  <div onClick="{{ f.confirm }}" style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.5px;padding:7px 13px;border:1px solid {{ f.cfBd }};color:{{ f.cfC }};background:{{ f.cfBg }}">✓ 確認 CONFIRM</div>
+                  <div onClick="{{ f.fp }}" style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.5px;padding:7px 13px;border:1px solid {{ f.fpBd }};color:{{ f.fpC }};background:{{ f.fpBg }}">⊘ 誤報 FALSE-POS</div>
+                  <sc-if value="{{ f.hasDump }}" hint-placeholder-val="{{ false }}"><div onClick="{{ f.dump }}" style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.5px;padding:7px 13px;border:1px solid {{ f.dumpBd }};color:{{ f.dumpC }};background:{{ f.dumpBg }}">{{ f.dumpTxt }}</div></sc-if>
+                  <div onClick="{{ f.repro }}" style="cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.5px;padding:7px 13px;border:1px solid rgba(58,160,255,.5);color:#3AA0FF">🔁 重現腳本</div>
+                </div>
+              </div>
+            </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="padding:16px 18px;font-size:10px;color:#4E4C3C">{{ listN }} 筆 · 依 {{ sortBy }} 排序 · 展開列可看非破壞式證據與修補建議</div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- ======================= REPORT ======================= -->
+    <sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;display:grid;grid-template-columns:300px 1fr;overflow:hidden">
+      <!-- controls -->
+      <div style="border-right:1px solid rgba(150,146,120,.14);padding:20px 18px;overflow:auto;display:flex;flex-direction:column;gap:20px">
+        <div>
+          <div style="font-size:11px;color:#4E4C3C;letter-spacing:2px;margin-bottom:4px">STEP 04</div>
+          <div style="font-size:17px;font-weight:800;color:#F1EFE2">匯出報告 · EXPORT</div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#4E4C3C;letter-spacing:1px;margin-bottom:8px">FORMAT / 格式</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ fmtChips }}" as="c" hint-placeholder-count="3">
+              <div onClick="{{ c.click }}" style="cursor:pointer;padding:10px 13px;border:1px solid {{ c.bd }};color:{{ c.c }};font-size:12px;font-weight:700;letter-spacing:1px;display:flex;align-items:center;gap:10px" style-hover="border-color:rgba(242,228,9,.5)"><span style="width:7px;height:7px;background:{{ c.c }}"></span>{{ c.l }}</div>
+            </sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#4E4C3C;letter-spacing:1px;margin-bottom:8px">OPTIONS / 選項</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div onClick="{{ toggleEvidence }}" style="cursor:pointer;display:flex;align-items:center;gap:9px;font-size:11px;color:#DAD8C8"><span style="width:14px;height:14px;border:1px solid {{ evC }};background:{{ evBg }};color:#0B0B09;text-align:center;line-height:12px;font-size:10px">{{ evMark }}</span>附證據（遮蔽 masked）</div>
+            <div onClick="{{ togglePlain }}" style="cursor:pointer;display:flex;align-items:center;gap:9px;font-size:11px;color:#FF3D5E"><span style="width:14px;height:14px;border:1px solid {{ plC }};background:{{ plBg }};color:#0B0B09;text-align:center;line-height:12px;font-size:10px">{{ plMark }}</span>附機敏明文（危險 DANGER）</div>
+            <div onClick="{{ toggleScope }}" style="cursor:pointer;display:flex;align-items:center;gap:9px;font-size:11px;color:#DAD8C8"><span style="width:14px;height:14px;border:1px solid {{ scC }};background:{{ scBg }};color:#0B0B09;text-align:center;line-height:12px;font-size:10px">{{ scMark }}</span>附上授權範圍聲明</div>
+            <div onClick="{{ toggleRaw }}" style="cursor:pointer;display:flex;align-items:center;gap:9px;font-size:11px;color:#DAD8C8"><span style="width:14px;height:14px;border:1px solid {{ rawC }};background:{{ rawBg }};color:#0B0B09;text-align:center;line-height:12px;font-size:10px">{{ rawMark }}</span>附上原始工具 log</div>
+            <sc-if value="{{ plainDanger }}" hint-placeholder-val="{{ false }}"><div style="font-size:10px;color:#FF3D5E;border:1px solid rgba(255,61,94,.5);background:rgba(255,61,94,.06);padding:7px 9px;line-height:1.5;margin-top:2px">⚠ 報告將寫入金鑰/密碼明文,僅在安全通道傳遞、閱後即焚。</div></sc-if>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;color:#4E4C3C;letter-spacing:1px;margin-bottom:8px">MIN SEVERITY / 門檻</div>
+          <div style="display:flex;gap:6px">
+            <div onClick="{{ setMinLow }}" style="cursor:pointer;flex:1;text-align:center;padding:7px;font-size:10px;border:1px solid {{ minLowBd }};color:{{ minLowC }}">LOW+</div>
+            <div onClick="{{ setMinMed }}" style="cursor:pointer;flex:1;text-align:center;padding:7px;font-size:10px;border:1px solid {{ minMedBd }};color:{{ minMedC }}">MED+</div>
+            <div onClick="{{ setMinHigh }}" style="cursor:pointer;flex:1;text-align:center;padding:7px;font-size:10px;border:1px solid {{ minHighBd }};color:{{ minHighC }}">HIGH+</div>
+          </div>
+        </div>
+        <div onClick="{{ download }}" style="cursor:pointer;padding:14px;text-align:center;border:1px solid #F2E409;background:rgba(242,228,9,.08);color:#F2E409;font-size:13px;font-weight:800;letter-spacing:1px;clip-path:polygon(0 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%)" style-hover="background:rgba(242,228,9,.16)">⭳ 下載 {{ repFmtUp }} · {{ previewN }} 筆</div>
+        <div style="font-size:9px;color:#4E4C3C;line-height:1.7">報告可複審:每筆 finding 含嚴重度、標的、非破壞式 oracle 證據與修補建議。</div>
+      </div>
+      <!-- preview -->
+      <div style="overflow:auto;padding:24px 28px;background:#070707">
+        <div style="max-width:840px;margin:0 auto;border:1px solid rgba(150,146,120,.16);background:#0B0B09">
+          <div style="padding:22px 26px;border-bottom:1px solid rgba(150,146,120,.14)">
+            <div style="font-size:20px;font-weight:800;color:#F2E409;letter-spacing:2px">EDU-RECON REPORT</div>
+            <div style="font-size:10px;color:#82806A;margin-top:6px">scope *.univ.edu.tw · 10.0.12.0/24　·　intensity {{ intensityUp }}　·　preview · {{ repFmtUp }}</div>
+            <div style="font-size:9px;color:#3AA0FF;margin-top:6px">◈ 僅限授權標的 · 報告金鑰/密碼預設遮蔽</div>
+            <div style="display:flex;gap:16px;margin-top:14px">
+              <span style="font-size:11px;color:#FF3D5E">CRIT {{ cCrit }}</span>
+              <span style="font-size:11px;color:#FF7A2A">HIGH {{ cHigh }}</span>
+              <span style="font-size:11px;color:#F6C63A">MED {{ cMed }}</span>
+              <span style="font-size:11px;color:#3AA0FF">LOW {{ cLow }}</span>
+              <span style="font-size:11px;color:#8E8CEA">INFO {{ cInfo }}</span>
+            </div>
+          </div>
+          <div style="padding:8px 0">
+            <sc-for list="{{ previewList }}" as="f" hint-placeholder-count="8">
+              <div style="padding:12px 26px;border-bottom:1px solid rgba(150,146,120,.07)">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-size:9px;font-weight:800;color:#0B0B09;background:{{ f.c }};padding:3px 7px">{{ f.k }}</span>
+                  <span style="font-size:11px;color:#4E4C3C">CVSS {{ f.cvss }}</span>
+                  <span style="font-size:12px;color:#F1EFE2;font-weight:600">{{ f.title }}</span>
+                  <span style="flex:1"></span>
+                  <span style="font-size:10px;color:#82806A">{{ f.cve }}</span>
+                </div>
+                <div style="font-size:10px;color:#82806A;margin-top:5px">{{ f.host }} · oracle {{ f.ok }}</div>
+                <sc-if value="{{ optEvidence }}" hint-placeholder-val="{{ true }}">
+                <div style="margin-top:7px;padding:8px 11px;background:#070707;border-left:2px solid {{ f.c }}">
+                  <sc-for list="{{ f.proofView }}" as="p" hint-placeholder-count="2">
+                    <div style="font-size:10px;color:#8F8B72;line-height:1.6;word-break:break-all">{{ p }}</div>
+                  </sc-for>
+                </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+
+  <!-- ======================= SHELL OVERLAY ======================= -->
+  <sc-if value="{{ shellOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeShell }}" style="position:fixed;inset:0;background:rgba(4,3,12,.8);display:flex;align-items:stretch;justify-content:flex-end;z-index:50">
+    <div onClick="{{ stop }}" style="width:min(680px,92vw);height:100%;background:#0B0B09;border-left:1px solid rgba(242,228,9,.25);clip-path:polygon(0 24px,24px 0,100% 0,100% 100%,0 100%);display:flex;flex-direction:column;box-shadow:-20px 0 60px rgba(0,0,0,.6)">
+      <div style="flex:none;padding:14px 18px;border-bottom:1px solid rgba(150,146,120,.14);display:flex;align-items:center;gap:12px">
+        <span style="width:8px;height:8px;border-radius:50%;background:{{ shell.statC }}"></span>
+        <span style="font-size:9px;font-weight:800;letter-spacing:.5px;color:#0B0B09;background:{{ shell.tagC }};padding:3px 7px">{{ shell.tag }}</span>
+        <div style="flex:1">
+          <div style="font-size:13px;color:#F1EFE2;font-weight:700">{{ shell.stage }} <span style="font-size:10px;color:#4E4C3C;font-weight:400">/ {{ shell.sub }}</span></div>
+          <div style="font-size:10px;color:#82806A;margin-top:2px">{{ shell.host }} · {{ shell.ip }} · {{ shell.tool }}</div>
+        </div>
+        <span style="font-size:10px;font-weight:700;letter-spacing:1px;color:{{ shell.statC }};border:1px solid {{ shell.statC }};padding:4px 9px">{{ shell.status }}</span>
+        <span onClick="{{ closeShell }}" style="cursor:pointer;font-size:16px;color:#82806A;padding:0 4px" style-hover="color:#fff">✕</span>
+      </div>
+      <div style="flex:none;padding:10px 18px;border-bottom:1px solid rgba(150,146,120,.1);background:#101010">
+        <div style="font-size:9px;color:#4E4C3C;letter-spacing:1px;margin-bottom:4px">COMMAND</div>
+        <div style="font-size:11px;color:#F2E409;word-break:break-all">{{ shell.cmd }}</div>
+      </div>
+      <div style="flex:1;min-height:0;overflow:auto;padding:14px 18px;font-size:11px;line-height:1.7">
+        <sc-for list="{{ shell.lines }}" as="ln" hint-placeholder-count="10">
+          <div style="color:{{ ln.c }};white-space:pre-wrap;word-break:break-all">{{ ln.t }}</div>
+        </sc-for>
+      </div>
+      <div style="flex:none;padding:12px 18px;border-top:1px solid rgba(150,146,120,.14);display:flex;align-items:center;gap:12px">
+        <span style="font-size:9px;color:#3AA0FF;letter-spacing:.5px">◈ 僅限授權標的 / authorized targets only</span>
+        <span style="flex:1"></span>
+        <sc-if value="{{ shell.hasDl }}" hint-placeholder-val="{{ false }}"><span onClick="{{ shell.dl.fn }}" style="cursor:pointer;font-size:11px;font-weight:700;color:#DAD8C8;border:1px solid rgba(150,146,120,.4);padding:7px 12px" style-hover="color:#fff;border-color:#DAD8C8">{{ shell.dl.label }}</span></sc-if>
+        <sc-if value="{{ shell.hasF }}" hint-placeholder-val="{{ false }}"><span onClick="{{ shell.toFinding }}" style="cursor:pointer;font-size:11px;font-weight:700;color:#F2E409;border:1px solid #F2E409;padding:7px 12px" style-hover="background:rgba(242,228,9,.12)">在 FINDINGS 開啟 →</span></sc-if>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;background:#101010;border:1px solid #FF3DAE;box-shadow:0 8px 30px rgba(0,0,0,.6);padding:11px 18px;font-size:11px;color:#F1EFE2;display:flex;align-items:center;gap:10px"><span style="width:7px;height:7px;border-radius:50%;background:#FF3DAE"></span>{{ toast }}</div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;scanSpeed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:0.25,&quot;max&quot;:4,&quot;step&quot;:0.25,&quot;unit&quot;:&quot;×&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Simulation&quot;},&quot;pipelineLayout&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;matrix&quot;,&quot;options&quot;:[&quot;matrix&quot;,&quot;rail&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;},&quot;reduceMotion&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Simulation&quot;}}">
+class Component extends DCLogic {
+  STAGES = [
+    {id:'discovery',  s:'DISC', name:'DISCOVERY',   cn:'主機・子網域',        tool:'ping · subfinder · crt.sh'},
+    {id:'portscan',   s:'PORT', name:'PORTSCAN',    cn:'連接埠指紋 + CVE',    tool:'nmap -sV -sC --script vuln'},
+    {id:'webdisco',   s:'WEB',  name:'WEB-DISCO',   cn:'目錄爆破・WP 偵測',    tool:'dirsearch'},
+    {id:'exposures',  s:'EXPO', name:'EXPOSURES',   cn:'.git/.env/面板/列表',  tool:'edu-recon/expose'},
+    {id:'secrets',    s:'SEC',  name:'SECRETS',     cn:'金鑰・Swagger/GraphQL',tool:'edu-recon/secrets'},
+    {id:'phpcgi',     s:'PCGI', name:'PHP-CGI',     cn:'CVE-2024-4577',        tool:'php-cgi-Injector'},
+    {id:'react2shell',s:'RSC',  name:'REACT2SHELL', cn:'CVE-2025-55182 RSC',   tool:'react2shell'},
+    {id:'webcve',     s:'WCVE', name:'WEB-CVE',     cn:'6 顆經典 CVE',         tool:'edu-recon/webcve'},
+    {id:'moodle',     s:'MDL',  name:'MOODLE',      cn:'LMS 指紋・moodledata', tool:'edu-recon/moodle'},
+    {id:'xss',        s:'XSS',  name:'XSS',         cn:'dalfox・反射探針',      tool:'dalfox'},
+    {id:'sqli',       s:'SQLI', name:'SQLI',        cn:'error 快掃・sqlmap',    tool:'sqlmap'},
+    {id:'cred',       s:'CRED', name:'CREDENTIALS', cn:'hydra 弱密碼',          tool:'hydra'},
+    {id:'wp',         s:'WP',   name:'WP2SHELL',    cn:'WordPress SQLi→shell', tool:'wp2shell'},
+    {id:'triage',     s:'TRG',  name:'TRIAGE',      cn:'去重・排名→複審',       tool:'edu-recon/triage'},
+  ];
+  ALWAYS = ['discovery','portscan','webdisco','exposures','secrets','moodle','triage'];
+  ACTIVE = ['phpcgi','react2shell','webcve','xss','sqli','cred','wp'];
+  CANDIDATE = ['sqli','cred','wp'];
+
+  TARGETS = [
+    {id:'t_lms',    host:'lms.univ.edu.tw',     kind:'domain', note:'Moodle LMS',        ip:'10.0.12.24'},
+    {id:'t_portal', host:'portal.univ.edu.tw',  kind:'domain', note:'校務系統 · Next.js', ip:'10.0.12.31'},
+    {id:'t_cs',     host:'www.cs.univ.edu.tw',  kind:'domain', note:'系網 · WordPress',   ip:'10.0.12.40'},
+    {id:'t_legacy', host:'legacy.univ.edu.tw',  kind:'host',   note:'舊 PHP 主機',        ip:'10.0.12.7'},
+    {id:'t_git',    host:'git.univ.edu.tw',     kind:'host',   note:'Gitea',             ip:'10.0.12.15'},
+    {id:'t_cidr',   host:'10.0.12.0/24',        kind:'cidr',   note:'授權子網',           ip:'—'},
+  ];
+
+  FIND = [
+    {id:'F1', tid:'t_legacy', sid:'phpcgi', sev:'critical', cve:'CVE-2024-4577', cvss:9.8, port:80,
+      title:'PHP-CGI Argument Injection → RCE', cn:'PHP-CGI 參數注入,可達遠端執行',
+      url:'http://legacy.univ.edu.tw/cgi-bin/php-cgi/index.php', tool:'php-cgi-Injector',
+      cmd:'php-cgi-inject --url http://legacy.univ.edu.tw/ --oracle echo --safe',
+      ok:'ECHO-MARKER', okLabel:'良性回顯 marker · 未執行 OS 指令 · 不改狀態',
+      proof:['inj  ?%ADd+allow_url_include%3D1+-d+auto_prepend_file%3Dphp://input','body <?php echo "EDURECON-9f3a2c"; ?>','resp 200 · reflected "EDURECON-9f3a2c" ✓'],
+      out:['❯ fingerprint: PHP/8.1.2 php-cgi (Windows CGI mode)','injecting auto_prepend_file=php://input','benign echo oracle → MATCH  EDURECON-9f3a2c','PoC confirmed · no command run · state unchanged'],
+      rem:'升級 PHP ≥ 8.3.8 / 8.2.20 / 8.1.29;停用 php-cgi 改用 PHP-FPM;移除 cgi-bin 對外。'},
+    {id:'F2', tid:'t_portal', sid:'react2shell', sev:'critical', cve:'CVE-2025-55182', cvss:9.4, port:443,
+      title:'React Server Components RCE', cn:'RSC 反序列化,可達遠端執行',
+      url:'https://portal.univ.edu.tw/_rsc', tool:'react2shell',
+      cmd:'react2shell --url https://portal.univ.edu.tw --oracle arith --safe',
+      ok:'ARITH-BACKFILL', okLabel:'算術回填驗證 · 僅運算比對 · 無副作用',
+      proof:['send  action payload → eval(8675*3)','expect 26025','resp  差異回填命中 26025 ✓'],
+      out:['❯ detect Next.js 15.x · RSC action endpoint','crafting benign deserialization gadget','arithmetic oracle 8675*3 → 26025 MATCH','RCE reachable · no shell spawned · read-only proof'],
+      rem:'升級 Next.js 至修補版;關閉未使用的 Server Actions;於邊界驗證 action 來源。'},
+    {id:'F3', tid:'t_cs', sid:'wp', sev:'critical', cve:'WPVDB-plugin', cvss:9.1, port:443, cand:true,
+      title:'WordPress Plugin SQLi → Webshell', cn:'外掛 SQLi 可寫入 → 取得 shell',
+      url:'https://www.cs.univ.edu.tw/wp-content/plugins/booking/ajax.php', tool:'wp2shell',
+      cmd:'wp2shell --url https://www.cs.univ.edu.tw --oracle arith --no-write',
+      ok:'ARITH-BACKFILL', okLabel:'UNION 算術回填 · 未寫檔 · 未落地 shell',
+      proof:['payload id=1 UNION SELECT 731*97,2,3-- -','expect 70907','resp 差異回填命中 70907 ✓'],
+      out:['❯ WP 6.2 · plugin booking 1.4 (known SQLi)','UNION arithmetic 731*97 → 70907 回填 ✓','write-path exists (uploads writable) — NOT exercised','confirmed exploitable · benign only'],
+      rem:'停用/更新 booking 外掛;WAF 擋 UNION;uploads 目錄禁止 PHP 執行。'},
+    {id:'F4', tid:'t_legacy', sid:'webcve', sev:'high', cve:'CVE-2018-7600', cvss:8.8, port:80,
+      title:'Drupalgeddon2 Remote Code Exec', cn:'Drupal 表單 API RCE',
+      url:'http://legacy.univ.edu.tw/user/register', tool:'edu-recon/webcve',
+      cmd:'webcve --module drupalgeddon2 --oracle echo --safe',
+      ok:'ECHO-MARKER', okLabel:'回顯 marker · 未執行系統指令',
+      proof:['inj  #post_render[]=printf · %s=EDURECON','resp reflected EDURECON ✓'],
+      out:['❯ Drupal 7.57 detected','form-API injection point confirmed','echo oracle reflected · no os exec'],
+      rem:'升級 Drupal ≥ 7.58;套用官方 SA-CORE-2018-002 修補。'},
+    {id:'F5', tid:'t_git', sid:'exposures', sev:'high', cve:'—', cvss:7.5, port:443,
+      title:'Exposed .git Directory → Source Disclosure', cn:'.git 目錄外露,原始碼可還原',
+      url:'https://git.univ.edu.tw/.git/', tool:'edu-recon/expose',
+      cmd:'expose --check git --url https://git.univ.edu.tw --get-only',
+      ok:'GET-ONLY', okLabel:'純 GET 讀取 · 未寫入 · 未改狀態',
+      proof:['GET /.git/HEAD → 200 "ref: refs/heads/main"','GET /.git/config → 200 (downloadable)'],
+      out:['❯ probing /.git/ index','HEAD + config + index readable','source tree reconstructable'],
+      rem:'移除對外 .git;於 web server 封鎖點目錄;改用部署產物而非 repo。'},
+    {id:'F6', tid:'t_portal', sid:'sqli', sev:'high', cve:'—', cvss:8.1, port:443, cand:true,
+      title:'Boolean-based SQLi (sqlmap) → file read', cn:'布林盲注,可讀本機檔',
+      url:'https://portal.univ.edu.tw/api/course?id=1', tool:'sqlmap',
+      cmd:'sqlmap -u "https://portal.univ.edu.tw/api/course?id=1" --technique=B --file-read=/etc/passwd',
+      ok:'READ /etc/passwd', okLabel:'僅讀取 · 非破壞式 · 未寫入',
+      proof:['param id boolean-blind injectable','LOAD_FILE(/etc/passwd) →','root:x:0:0:root:/root:/bin/bash','www-data:x:33:33:...'],
+      out:['❯ backend MySQL 8.0','boolean-blind confirmed on `id`','arbitrary file read via LOAD_FILE','read-only · no INSERT/UPDATE issued'],
+      rem:'參數化查詢;移除 FILE 權限;WAF;最小權限 DB 帳號。'},
+    {id:'F7', tid:'t_lms', sid:'moodle', sev:'high', cve:'—', cvss:7.4, port:443,
+      title:'Moodle 3.9 EOL + moodledata Exposed', cn:'Moodle 過舊分支 + moodledata 外露',
+      url:'https://lms.univ.edu.tw/moodledata/', tool:'edu-recon/moodle',
+      cmd:'moodle --fingerprint --check-datadir --url https://lms.univ.edu.tw',
+      ok:'GET-ONLY', okLabel:'指紋 + GET 列目錄 · 被動盤點',
+      proof:['version.php → Moodle 3.9.1 (EOL 2021)','GET /moodledata/ → 200 directory listing','sessions/ + filedir/ readable'],
+      out:['❯ fingerprint Moodle 3.9.1 · unsupported branch','moodledata/ directory listing exposed','session + user files reachable'],
+      rem:'升級至受支援分支;moodledata 移出 web root;封鎖目錄列表。'},
+    {id:'F8', tid:'t_cs', sid:'xss', sev:'medium', cve:'—', cvss:6.1, port:443,
+      title:'Reflected XSS (dalfox)', cn:'反射型 XSS',
+      url:'https://www.cs.univ.edu.tw/?s=', tool:'dalfox',
+      cmd:'dalfox url "https://www.cs.univ.edu.tw/?s=FUZZ" --only-poc --skip-mining',
+      ok:'REFLECT-MARKER', okLabel:'反射 marker · 未執行任意 JS · 良性',
+      proof:['param s reflected in HTML context','payload "><svg/onload=EDURECON> reflected','executed in sandbox harness only'],
+      out:['❯ crawling reflected params','param `s` reflects unencoded','PoC marker reflected · benign harness'],
+      rem:'輸出編碼;CSP;搜尋參數過濾 < > "。'},
+    {id:'F9', tid:'t_portal', sid:'secrets', sev:'medium', cve:'—', cvss:6.5, port:443,
+      title:'Exposed .env with AWS Keys', cn:'.env 外露,含 AWS 金鑰',
+      url:'https://portal.univ.edu.tw/.env', tool:'edu-recon/secrets',
+      cmd:'secrets --url https://portal.univ.edu.tw --get-only',
+      ok:'GET-ONLY', okLabel:'讀取 + 格式比對 · 未驗證/未使用金鑰',
+      proof:['GET /.env → 200','AWS_ACCESS_KEY_ID=AKIA... (format match)','AWS_SECRET_ACCESS_KEY=**** (redacted)'],
+      out:['❯ fetch common dotfiles','/.env readable','matched AWS key pattern · keys NOT used'],
+      rem:'移除對外 .env;輪替外露金鑰;改用機密管理服務。'},
+    {id:'F10', tid:'t_lms', sid:'exposures', sev:'medium', cve:'—', cvss:5.8, port:443,
+      title:'phpMyAdmin Panel Exposed', cn:'phpMyAdmin 面板對外',
+      url:'https://lms.univ.edu.tw/phpmyadmin/', tool:'edu-recon/expose',
+      cmd:'expose --check panels --url https://lms.univ.edu.tw --get-only',
+      ok:'GET-ONLY', okLabel:'僅指紋登入頁 · 未嘗試登入',
+      proof:['GET /phpmyadmin/ → 200 login page','pma version fingerprint 5.1'],
+      out:['❯ probing admin panels','phpMyAdmin login reachable','no credential attempt made'],
+      rem:'面板限內網/VPN;IP 白名單;改用跳板。'},
+    {id:'F11', tid:'t_git', sid:'secrets', sev:'medium', cve:'—', cvss:6.4, port:443,
+      title:'GitHub PAT in bundle.js + Swagger Exposed', cn:'前端 bundle 洩 GitHub token + Swagger 暴露',
+      url:'https://git.univ.edu.tw/assets/bundle.js', tool:'edu-recon/secrets',
+      cmd:'secrets --scan-js --url https://git.univ.edu.tw --get-only',
+      ok:'REGEX-MATCH', okLabel:'JS 內容比對 · 未驗證 token',
+      proof:['bundle.js → ghp_**** (GitHub PAT pattern)','GET /swagger/ → 200 API schema exposed'],
+      out:['❯ pulling JS/HTML assets','regex hit: GitHub PAT in bundle.js','Swagger UI schema publicly readable'],
+      rem:'撤銷外露 token;金鑰不入前端;Swagger 上驗證。'},
+    {id:'F12', tid:'t_cs', sid:'webdisco', sev:'low', cve:'—', cvss:4.3, port:443,
+      title:'Directory Listing Enabled', cn:'目錄列表開啟',
+      url:'https://www.cs.univ.edu.tw/uploads/', tool:'dirsearch',
+      cmd:'dirsearch -u https://www.cs.univ.edu.tw -e php --get-only',
+      ok:'GET-ONLY', okLabel:'索引頁讀取 · 被動',
+      proof:['GET /uploads/ → 200 "Index of /uploads"','列出使用者上傳檔'],
+      out:['❯ brute common dirs','/uploads/ autoindex on'],
+      rem:'關閉 autoindex (Options -Indexes)。'},
+    {id:'F13', tid:'t_legacy', sid:'exposures', sev:'low', cve:'—', cvss:4.0, port:80,
+      title:'phpinfo() Exposed', cn:'phpinfo() 對外',
+      url:'http://legacy.univ.edu.tw/phpinfo.php', tool:'edu-recon/expose',
+      cmd:'expose --check phpinfo --url http://legacy.univ.edu.tw --get-only',
+      ok:'GET-ONLY', okLabel:'讀取標題指紋 · 被動',
+      proof:['GET /phpinfo.php → 200 "PHP Version 8.1.2"','洩漏路徑・模組・環境'],
+      out:['❯ probing info leaks','phpinfo() reachable'],
+      rem:'移除 phpinfo.php;expose_php Off。'},
+    {id:'F14', tid:'t_cidr', sid:'discovery', sev:'info', cve:'—', cvss:0, port:0,
+      title:'Live Hosts & Subdomains Inventory', cn:'活主機與子網域盤點',
+      url:'10.0.12.0/24', tool:'ping · subfinder · crt.sh',
+      cmd:'discover --cidr 10.0.12.0/24 --passive-dns',
+      ok:'GET-ONLY', okLabel:'被動盤點 · 良性 ping/DNS',
+      proof:['12 hosts up / 254','37 subdomains (crt.sh + subfinder)','全數落在授權範圍內'],
+      out:['❯ ping-sweep 10.0.12.0/24','12 live · 37 in-scope subdomains','scope re-check: all in-bounds ✓'],
+      rem:'—(僅盤點,依結果納入後續掃描)。'},
+    {id:'F15', tid:'t_legacy', sid:'cred', sev:'high', cve:'—', cvss:8.0, port:22, cand:true,
+      title:'Default SSH Credentials', cn:'SSH 預設/弱密碼',
+      url:'ssh://legacy.univ.edu.tw:22', tool:'hydra',
+      cmd:'hydra -l student -p student ssh://legacy.univ.edu.tw -t1 -f',
+      ok:'AUTH-OK (benign)', okLabel:'僅驗證登入成立 · 未執行任何指令即登出',
+      proof:['student:student → AUTH SUCCESS','session opened → immediately closed','no command executed'],
+      out:['❯ hydra ssh default set','valid: student:student','login proven · no post-auth action'],
+      rem:'停用預設帳號;強制密碼原則;金鑰登入 + fail2ban。'},
+  ];
+
+  SENS = {F3:1,F5:1,F6:1,F9:1,F11:1,F15:1};
+  DUMP = {F5:'git',F9:'key',F10:'file',F11:'key',F12:'file',F13:'file'};
+  SECRET = {F9:['AKIAIOSFODNN7EXAMPLE','AKIA…7EXAMPLE'],F11:['ghp_1aB2cD3eF4gH5iJ6kL7mN8oP9qR0sT1uV','ghp_****…sT1uV'],F15:['student:student','stu•••:•••••'],F6:['root:x:0:0:root:/root:/bin/bash','root:x:0:0:••••••']};
+
+  state = {
+    view:'setup', intensity:'full', phase:'idle',
+    targetsText:'lms.univ.edu.tw\nportal.univ.edu.tw\nwww.cs.univ.edu.tw\nlegacy.univ.edu.tw\ngit.univ.edu.tw\n10.0.12.0/24',
+    active:[], status:{}, logs:[], findings:[], elapsed:0, progress:0, cursor:0, total:0,
+    shell:null, openFinding:null, exportOpen:false, exportFmt:'html',
+    sevFilter:['critical','high','medium','low','info'], statFilter:'all', q:'', sortBy:'sev',
+    marks:{}, notes:{}, banner:false,
+    reveal:[], dumps:{}, demoMode:true, toast:null,
+    expOpts:{evidence:true, plaintext:false, rawlog:false, scope:true, minSev:'low'},
+  };
+
+  // ---------- helpers ----------
+  sevMeta = {critical:{c:'#FF3D5E',k:'CRIT',r:5},high:{c:'#FF7A2A',k:'HIGH',r:4},medium:{c:'#F6C63A',k:'MED',r:3},low:{c:'#3AA0FF',k:'LOW',r:2},info:{c:'#8E8CEA',k:'INFO',r:1}};
+  fmtT(s){const m=Math.floor(s/60),ss=Math.floor(s%60);return String(m).padStart(2,'0')+':'+String(ss).padStart(2,'0');}
+  inScope(host){ return !!host; }
+  kindOf(host){ return host.includes('/') ? 'cidr' : (/[a-z]/i.test(host)?'domain':'host'); }
+  meta(host){ return this.TARGETS.find(t=>t.host===host) || {id:'x_'+host, host, kind:this.kindOf(host), note:'外部標的', ip:'—'}; }
+  parsed(){
+    return this.state.targetsText.split('\n').map(x=>x.trim()).filter(Boolean).map((h,i)=>({
+      idx:i, host:h, kind:this.kindOf(h), inScope:this.inScope(h)
+    }));
+  }
+  included(sid){ const it=this.state.intensity;
+    if(it==='passive') return this.ALWAYS.includes(sid);
+    return this.ALWAYS.includes(sid)||this.ACTIVE.includes(sid);
+  }
+  applies(kind,sid){ if(kind==='cidr') return ['discovery','portscan','triage'].includes(sid); return true; }
+  activeFindings(){ const it=this.state.intensity;
+    return this.FIND.filter(f=>{
+      if(!this.included(f.sid)) return false;
+      if(it==='passive' && this.ACTIVE.includes(f.sid)) return false;
+      return true;
+    });
+  }
+
+  // ---------- engine ----------
+  buildPlan(){
+    const active = this.parsed().filter(p=>p.inScope).map(p=>this.meta(p.host));
+    const status={};
+    active.forEach(t=>{ status[t.id]={}; this.STAGES.forEach(s=>{
+      if(!this.applies(t.kind,s.id)) status[t.id][s.id]='na';
+      else if(!this.included(s.id)) status[t.id][s.id]='skip';
+      else status[t.id][s.id]='pending';
+    });});
+    const findMap={};
+    this.activeFindings().forEach(f=> findMap[f.tid+':'+f.sid]=f );
+    const ops=[];
+    const L=(target,stage,level,text)=>ops.push({k:'log',line:{target,stage,level,text}});
+    L('','sys','sys','edu-recon v3 · orchestrator online');
+    L('','sys','ok','SCOPE-LOCK armed → *.univ.edu.tw · 10.0.12.0/24');
+    L('','sys','sys','intensity='+this.state.intensity+' · targets='+active.length+' · stages='+this.STAGES.filter(s=>this.included(s.id)).length);
+    this.STAGES.forEach(st=>{
+      if(!this.included(st.id)) return;
+      active.forEach(t=>{
+        if(!this.applies(t.kind,st.id)) return;
+        ops.push({k:'stat',tid:t.id,sid:st.id,v:'running'});
+        L(t.host,st.s,'scope','scope re-check · '+t.host+' in-bounds ✓');
+        const f=findMap[t.id+':'+st.id];
+        const cand = f && f.cand && this.state.intensity==='recon';
+        L(t.host,st.s,'cmd', (cand? f.cmd.replace(/--file-read=\S+|-f$/,'').trim()+'  # candidate-only':(f?f.cmd:this.genCmd(t,st))));
+        (f?f.out:this.genOut(t,st)).slice(0,3).forEach(o=>L(t.host,st.s, o.startsWith('❯')?'out':'out', o));
+        if(f && !cand){
+          L(t.host,st.s,f.sev==='info'?'info':(f.sev==='low'||f.sev==='medium'?'warn':'hit'), '['+this.sevMeta[f.sev].k+'] '+f.title+' · oracle '+f.ok+' ✓');
+          ops.push({k:'find',id:f.id});
+          ops.push({k:'stat',tid:t.id,sid:st.id,v:'hit',sev:f.sev});
+        } else if(cand){
+          L(t.host,st.s,'warn','[CAND] '+f.title+' · 候選,recon 不實打');
+          ops.push({k:'find',id:f.id,cand:true});
+          ops.push({k:'stat',tid:t.id,sid:st.id,v:'cand'});
+        } else {
+          L(t.host,st.s,'ok','clean · no finding');
+          ops.push({k:'stat',tid:t.id,sid:st.id,v:'done'});
+        }
+      });
+    });
+    L('','sys','sys','triage · dedupe · soft-404 filter · rank by severity');
+    L('','sys','ok','review queue ready → FINDINGS');
+    ops.push({k:'done'});
+    return {active,status,ops};
+  }
+  genCmd(t,st){ const h=t.host; const map={
+    discovery:'discover '+(t.kind==='cidr'?'--cidr '+h:'--host '+h)+' --passive-dns',
+    portscan:'nmap -sV -sC --script vuln '+ (t.ip!=='—'?t.ip:h),
+    webdisco:'dirsearch -u https://'+h+' -e php,bak',
+    exposures:'expose --all --url https://'+h+' --get-only',
+    secrets:'secrets --scan-js --url https://'+h+' --get-only',
+    phpcgi:'php-cgi-inject --url http://'+h+' --oracle echo --safe',
+    react2shell:'react2shell --url https://'+h+' --oracle arith --safe',
+    webcve:'webcve --all --oracle echo --safe --url https://'+h,
+    moodle:'moodle --fingerprint --url https://'+h,
+    xss:'dalfox url https://'+h+' --only-poc',
+    sqli:'sqlmap -u https://'+h+' --batch --technique=BE',
+    cred:'hydra -L users -P weak.txt '+ (t.kind==='cidr'?'—':h),
+    wp:'wp2shell --url https://'+h+' --no-write',
+    triage:'triage --dedupe --rank',
+  }; return map[st.id]||('run '+st.id+' '+h); }
+  genOut(t,st){ const h=t.host; const map={
+    discovery:['❯ resolving '+h,'host up · '+t.ip,'0 new in-scope names'],
+    portscan:['❯ nmap '+t.ip,'22,80,443 open · no vuln-script hit'],
+    webdisco:['❯ dir brute '+h,'200: /, /login · not WordPress'],
+    exposures:['❯ dotfiles/panels '+h,'no .git/.env/panel exposed'],
+    secrets:['❯ scan JS/HTML '+h,'no key pattern matched'],
+    phpcgi:['❯ php-cgi probe '+h,'not php-cgi / patched'],
+    react2shell:['❯ RSC probe '+h,'no vulnerable action endpoint'],
+    webcve:['❯ 6-CVE sweep '+h,'no classic CVE reachable'],
+    moodle:['❯ moodle fingerprint '+h,'not Moodle'],
+    xss:['❯ reflected probe '+h,'no reflection'],
+    sqli:['❯ sql error quick '+h,'no injectable param'],
+    cred:['❯ default-cred set '+h,'no weak login'],
+    wp:['❯ wp check '+h,'not WordPress'],
+    triage:['❯ ranking findings','done'],
+  }; return map[st.id]||['❯ '+st.id,'clean']; }
+
+  run(){
+    if(this.state.phase==='running') return this.pause();
+    if(this.state.phase==='paused'){ this.setState({phase:'running'}); this.startTimer(); return; }
+    const {active,status,ops}=this.buildPlan();
+    this._ops=ops;
+    this.setState({phase:'running',view:'monitor',active,status,logs:[],findings:[],cursor:0,total:ops.length,elapsed:0,progress:0,banner:false,openFinding:null,shell:null});
+    this._t0=Date.now();
+    this.startTimer();
+  }
+  pause(){ this.setState({phase:'paused'}); this.stopTimer(); }
+  reset(){ this.stopTimer(); const {active,status}=this.buildPlan(); this.setState({phase:'idle',active,status,logs:[],findings:[],cursor:0,progress:0,elapsed:0,banner:false,shell:null,openFinding:null}); }
+  skip(){ if(!this._ops) return; this.stopTimer(); this.applyOps(this._ops.length - this.state.cursor); }
+  startTimer(){ this.stopTimer(); const sp=(this.props.scanSpeed??1); this._iv=setInterval(()=>this.tick(), Math.max(45, 130/sp)); }
+  stopTimer(){ if(this._iv){clearInterval(this._iv); this._iv=null;} }
+  tick(){ if(this.state.phase!=='running') return; const sp=(this.props.scanSpeed??1); this.applyOps(Math.max(1,Math.round(1.6*sp))); }
+  applyOps(n){
+    const s=this.state; let {cursor}=s; const status=JSON.parse(JSON.stringify(s.status));
+    const logs=s.logs.slice(); const findings=s.findings.slice(); let done=false;
+    for(let i=0;i<n && cursor<this._ops.length;i++,cursor++){
+      const op=this._ops[cursor];
+      if(op.k==='log') logs.push({id:cursor, ...op.line});
+      else if(op.k==='stat'){ if(status[op.tid]) status[op.tid][op.sid]=op.v; }
+      else if(op.k==='find'){ const f=this.FIND.find(x=>x.id===op.id); if(f && !findings.find(x=>x.id===f.id)) findings.push({...f, base: op.cand?'candidate':'new'}); }
+      else if(op.k==='done'){ done=true; }
+    }
+    const elapsed = (Date.now()-this._t0)/1000;
+    const progress = this._ops.length? cursor/this._ops.length : 0;
+    const patch={cursor, status, logs:logs.slice(-260), findings, elapsed, progress};
+    if(done){ this.stopTimer(); patch.phase='done'; patch.banner=true; patch.progress=1; }
+    this.setState(patch);
+  }
+  componentWillUnmount(){ this.stopTimer(); }
+  componentDidUpdate(){ if(this.state.phase==='running'){ const el=document.getElementById('er-log'); if(el) el.scrollTop=el.scrollHeight; } }
+
+  // ---------- ui actions ----------
+  setView(v){ this.setState({view:v, banner:false}); }
+  setIntensity(i){ if(this.state.phase==='running') return; this.setState({intensity:i}); }
+  openShell(tid,sid){ const st=this.state.status[tid]; if(!st||st[sid]==='na') return; this.setState({shell:{tid,sid}}); }
+  closeShell(){ this.setState({shell:null}); }
+  toggleFinding(id){ this.setState({openFinding: this.state.openFinding===id?null:id}); }
+  toggleSev(sev){ const cur=this.state.sevFilter.slice(); const i=cur.indexOf(sev); if(i>=0)cur.splice(i,1); else cur.push(sev); this.setState({sevFilter:cur}); }
+  mark(id,v){ const m={...this.state.marks}; m[id]= m[id]===v? null : v; this.setState({marks:m}); }
+  setStat(v){ this.setState({statFilter:v}); }
+  setSort(v){ this.setState({sortBy:v}); }
+  setQ(e){ this.setState({q:e.target.value}); }
+  setText(e){ this.setState({targetsText:e.target.value}); }
+  openExport(){ this.setState({exportOpen:true, view:'report'}); }
+  setFmt(f){ this.setState({exportFmt:f}); }
+  toggleOpt(k){ const o={...this.state.expOpts}; o[k]=!o[k]; this.setState({expOpts:o}); }
+  toggleReveal(id){ const r=this.state.reveal.slice(); const i=r.indexOf(id); i>=0?r.splice(i,1):r.push(id); this.setState({reveal:r}); }
+  toast(m){ this.setState({toast:m}); clearTimeout(this._tt); this._tt=setTimeout(()=>this.setState({toast:null}),2600); }
+  evProof(f){ const sec=this.SECRET[f.id]; return (this.state.expOpts.plaintext||!sec)? f.proof : f.proof.map(p=>p.split(sec[0]).join(sec[1])); }
+  reproScript(f){ return ['#!/usr/bin/env bash','# edu-recon benign PoC · '+f.id+' · '+(f.cve||'-'),'# oracle: '+f.ok+'  —  僅限授權標的 / authorized targets only','set -euo pipefail','TARGET="'+f.url+'"','','# '+f.title,f.cmd,'','# expect:'].concat(f.proof.map(p=>'#   '+p)).join('\n'); }
+  doRepro(id){ const f=this.FIND.find(x=>x.id===id); this.setState({shell:{tid:f.tid,sid:f.sid,fid:id,mode:'repro'}}); }
+  doDump(id){ const cur=this.state.dumps[id]; if(cur&&cur.state==='dumping')return; const d={...this.state.dumps}; d[id]={state:'dumping'}; this.setState({dumps:d});
+    clearTimeout(this['_dp'+id]); this['_dp'+id]=setTimeout(()=>{ const f=this.FIND.find(x=>x.id===id); const kind=this.DUMP[id]||'file'; const size=kind==='git'?'2.4 MB':kind==='key'?'312 B':(3+f.id.length)+'.1 KB';
+      const dd={...this.state.dumps}; dd[id]={state:'done',size,kind}; this.setState({dumps:dd, shell:{tid:f.tid,sid:f.sid,fid:id,mode:'dump'}}); this.toast('已抓存 → runs/2026-0827/dumps/ · '+size); },820); }
+  dumpAll(){ const ids=this.dispFindings().filter(f=>this.DUMP[f.id]).map(f=>f.id); if(!ids.length){this.toast('沒有可抓存的洩漏');return;} const d={...this.state.dumps}; ids.forEach(id=>{const kind=this.DUMP[id];d[id]={state:'done',size:kind==='git'?'2.4 MB':kind==='key'?'312 B':'4.1 KB',kind};}); this.setState({dumps:d}); this.toast('已抓存 '+ids.length+' 筆洩漏 → runs/2026-0827/dumps/'); }
+  clearDumps(){ this.setState({dumps:{}}); this.toast('已清除本 run 的 dumps'); }
+  shellExtra(f,mode){ const sec=this.SECRET[f.id];
+    if(mode==='repro'){ const sh=this.reproScript(f);
+      return {hdr:'重現腳本 / PoC', tag:'PoC', tagC:'#F2E409', cmd:'bash poc_'+f.id+'.sh', status:'READY', statC:'#F2E409',
+        lines:sh.split('\n').map(x=>({c:x.startsWith('#')?'#82806A':(x.trim()?'#DAD8C8':'#4E4C3C'), t:x||' '})),
+        dl:{label:'⤓ 下載 .sh', fn:()=>{const b=new Blob([sh],{type:'text/x-shellscript'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='poc_'+f.id+'.sh';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1500);this.toast('已下載 PoC 腳本 · 僅限授權標的');}}}; }
+    const kind=this.DUMP[f.id]||'file'; let lines;
+    if(kind==='git') lines=[{c:'#F2E409',t:'# GIT DUMP · reconstructed source tree'},{c:'#DAD8C8',t:'saved   runs/2026-0827/dumps/'+f.tid+'/git/'},{c:'#4E4C3C',t:' '},{c:'#82806A',t:'# reconstructed files (14)'},{c:'#DAD8C8',t:'  HEAD  config  index'},{c:'#DAD8C8',t:'  app/config/database.php'},{c:'#FF7A2A',t:'  app/.env.bak  ← 含機敏'},{c:'#DAD8C8',t:'  routes/web.php  src/Auth.php'},{c:'#82806A',t:'  … +7 files'}];
+    else if(kind==='key') lines=[{c:'#F2E409',t:'# KEY CARD'},{c:'#82806A',t:'type    '+(f.title.includes('AWS')?'AWS Access Key':f.title.includes('GitHub')?'GitHub PAT':'credential')},{c:'#FF3DAE',t:'value   '+(sec?sec[0]:'(captured)')},{c:'#82806A',t:'source  '+f.url},{c:'#82806A',t:'sev     '+f.sev.toUpperCase()},{c:'#4E4C3C',t:' '},{c:'#FF7A2A',t:'⚠ 機敏明文 · 已落地 runs/…/dumps/ · 請自行保管/清除'}];
+    else lines=[{c:'#F2E409',t:'# FILE DUMP'},{c:'#DAD8C8',t:'saved   runs/2026-0827/dumps/'+f.tid+'/'+f.sid+'.txt'},{c:'#4E4C3C',t:' '},...f.proof.map(p=>({c:'#DAD8C8',t:p}))];
+    return {hdr:'DUMP · '+kind.toUpperCase(), tag:'DUMP', tagC:'#FF3DAE', cmd:'edu-recon dump --'+kind+' '+f.url, status:'DUMPED', statC:'#FF3DAE', lines,
+      dl:{label:'⤓ 下載', fn:()=>this.toast('已下載 dump · 機敏內容,注意保管')}}; }
+
+  dispFindings(){
+    const marks=this.state.marks;
+    let list=this.state.findings.map(f=>({...f, stat: marks[f.id]||f.base}));
+    const q=this.state.q.trim().toLowerCase();
+    list=list.filter(f=> this.state.sevFilter.includes(f.sev)
+      && (this.state.statFilter==='all'|| f.stat===this.state.statFilter)
+      && (!q || (f.title+f.cn+f.cve+this.hostOf(f.tid)).toLowerCase().includes(q)));
+    const rank={critical:5,high:4,medium:3,low:2,info:1};
+    list.sort((a,b)=> this.state.sortBy==='cvss' ? b.cvss-a.cvss : (rank[b.sev]-rank[a.sev]||b.cvss-a.cvss));
+    return list;
+  }
+  hostOf(tid){ const t=(this.state.active.find(x=>x.id===tid))||this.meta(tid); return t?t.host:tid; }
+
+  reportText(fmt){
+    const list=this.dispFindings();
+    const o=this.state.expOpts; const rankMin=this.sevMeta[o.minSev].r;
+    const F=list.filter(f=>this.sevMeta[f.sev].r>=rankMin);
+    const scope='*.univ.edu.tw · 10.0.12.0/24';
+    if(fmt==='json') return JSON.stringify({tool:'edu-recon',generated:new Date().toISOString(),intensity:this.state.intensity,scope,summary:this.counts(),findings:F.map(f=>({id:f.id,severity:f.sev,cvss:f.cvss,cve:f.cve,title:f.title,target:this.hostOf(f.tid),url:f.url,stage:f.sid,oracle:f.ok,status:f.stat,...(o.evidence?{evidence:this.evProof(f)}:{}),remediation:f.rem}))},null,2);
+    if(fmt==='md'){ let s='# edu-recon report\n\n- scope: '+scope+'\n- intensity: '+this.state.intensity+'\n- generated: '+new Date().toISOString()+'\n\n## Summary\n\n'+Object.entries(this.counts()).map(([k,v])=>'- '+k+': '+v).join('\n')+'\n\n## Findings\n\n';
+      F.forEach(f=>{ s+='### ['+this.sevMeta[f.sev].k+'] '+f.title+'\n\n- target: `'+this.hostOf(f.tid)+'`\n- cve: '+f.cve+' · cvss '+f.cvss+'\n- oracle: '+f.ok+'\n'+(o.evidence?'- evidence:\n'+this.evProof(f).map(p=>'  - `'+p+'`').join('\n')+'\n':'')+'- remediation: '+f.rem+'\n\n'; });
+      return s; }
+    // html
+    let rows=F.map(f=>'<tr><td class="s '+f.sev+'">'+this.sevMeta[f.sev].k+'</td><td>'+f.cvss+'</td><td><b>'+f.title+'</b><br><span class=cn>'+f.cn+'</span></td><td><code>'+this.hostOf(f.tid)+'</code></td><td>'+f.cve+'</td><td>'+f.ok+'</td></tr>'+(o.evidence?'<tr class=ev><td></td><td colspan=5><pre>'+this.evProof(f).join('\n')+'</pre></td></tr>':'')).join('');
+    return '<!doctype html><meta charset=utf-8><title>edu-recon report</title><style>body{background:#0B0B09;color:#DAD8C8;font:13px/1.5 "JetBrains Mono",monospace;margin:0;padding:32px}h1{color:#F2E409;letter-spacing:2px}table{border-collapse:collapse;width:100%;margin-top:16px}td,th{border:1px solid rgba(150,146,120,.18);padding:8px 10px;text-align:left;vertical-align:top}.s{font-weight:700}.critical{color:#FF3D5E}.high{color:#FF7A2A}.medium{color:#F6C63A}.low{color:#3AA0FF}.info{color:#8E8CEA}.cn{color:#82806A}code{color:#F2E409}pre{margin:0;color:#82806A;white-space:pre-wrap}.meta{color:#82806A}</style><h1>EDU-RECON REPORT</h1><div class=meta>scope '+scope+' · authorized targets only · intensity '+this.state.intensity+' · '+new Date().toISOString()+'</div><table><tr><th>SEV</th><th>CVSS</th><th>FINDING</th><th>TARGET</th><th>CVE</th><th>ORACLE</th></tr>'+rows+'</table>';
+  }
+  download(){ const fmt=this.state.exportFmt; const txt=this.reportText(fmt); const ext={json:'json',md:'md',html:'html'}[fmt]; const type={json:'application/json',md:'text/markdown',html:'text/html'}[fmt];
+    const blob=new Blob([txt],{type}); const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='edu-recon-report.'+ext; document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1500); }
+
+  counts(){ const c={critical:0,high:0,medium:0,low:0,info:0}; this.state.findings.forEach(f=>c[f.sev]++); return c; }
+
+  // ---------- render ----------
+  renderVals(){
+    const s=this.state, SM=this.sevMeta;
+    const cnt=this.counts();
+    const active=s.active;
+    const parsed=this.parsed();
+    const inN=parsed.filter(p=>p.inScope).length, outN=parsed.length-inN;
+
+    const cellColor=(v,sev)=>{
+      if(v==='hit'||v==='cand') return sev?SM[sev].c:'#FF3DAE';
+      if(v==='done') return '#15707F';
+      if(v==='running') return '#FF3DAE';
+      return 'transparent';
+    };
+    const rows=active.map(t=>{
+      const st=s.status[t.id]||{};
+      let tot=0,fin=0;
+      const cells=this.STAGES.map(sg=>{
+        const v=st[sg.id]||'na'; if(v!=='na'&&v!=='skip'){tot++; if(v==='done'||v==='hit'||v==='cand')fin++;}
+        const f=this.FIND.find(x=>x.tid===t.id&&x.sid===sg.id);
+        const _sev=(v==='hit'||v==='cand')&&f?f.sev:''; const _run=v==='running', _hit=(v==='hit'||v==='cand'), _rm=this.props.reduceMotion;
+        return {sid:sg.id, s:sg.s, name:sg.name, v, sev:_sev,
+          bg: v==='na'?'transparent':(v==='skip'?'repeating-linear-gradient(45deg,rgba(150,146,120,.06) 0 3px,transparent 3px 6px)': _run?'linear-gradient(90deg,#FF3DAE,#FFB4E1,#FF3DAE) 0 0/220% 100%': cellColor(v,_sev)),
+          bd: v==='na'?'rgba(150,146,120,.06)':(v==='pending'?'rgba(150,146,120,.20)': v==='skip'?'rgba(150,146,120,.10)':'transparent'),
+          col: _hit?(_sev?SM[_sev].c:'#FF3DAE'):'inherit',
+          glow: _hit?'0 0 7px':'none',
+          anim: _rm?'none':(_run?'erscan .85s linear infinite':(_hit?'erhit 1.6s ease-in-out infinite':'none')),
+          click: v!=='na' ? (()=>this.openShell(t.id,sg.id)) : null,
+        };
+      });
+      const pct= tot? Math.round(fin/tot*100):0;
+      return {...t, cells, pct, pctStr:pct+'%',
+        bar: pct===100?'#15707F':'#FF3DAE',
+        state: (this.STAGES.some(sg=>st[sg.id]==='running'))?'RUNNING':(pct===100?'DONE':(pct>0?'…':'QUEUED')),
+        stateC:(this.STAGES.some(sg=>st[sg.id]==='running'))?'#FF3DAE':(pct===100?'#F2E409':'#82806A')};
+    });
+
+    const lvlC={sys:'#82806A',ok:'#F2E409',info:'#82806A',out:'#4E4C3C',cmd:'#F2E409',scope:'#3AA0FF',warn:'#FF3DAE',hit:'#FF3D5E'};
+    const logs=s.logs.map(l=>({...l, c:lvlC[l.level]||'#82806A', tag:l.stage?('['+l.stage+']'):'', tagC: l.level==='hit'?'#FF3D5E':(l.level==='warn'?'#FF3DAE':(l.level==='cmd'?'#F2E409':'#4E4C3C')), prefix: l.level==='cmd'?'❯ ':'' }));
+
+    const feed=s.findings.slice().reverse().slice(0,14).map(f=>({...f, c:SM[f.sev].c, k:SM[f.sev].k, host:this.hostOf(f.tid), sens:!!this.SENS[f.id]}));
+
+    const list=this.dispFindings().map(f=>{const cfOn=s.marks[f.id]==='confirmed',fpOn=s.marks[f.id]==='false-positive';
+      const sens=!!this.SENS[f.id], dk=this.DUMP[f.id]||'', sec=this.SECRET[f.id], revealed=s.reveal.includes(f.id), ds=(s.dumps[f.id]||{}), dstate=ds.state||'idle';
+      const proofView = sec ? f.proof.map(p=> revealed? p : p.split(sec[0]).join(sec[1])) : (sens&&!revealed? ['🔒 機敏證據已遮蔽 —— 點右上「👁 顯示」檢視'] : f.proof);
+      const dbtn={idle:{c:'#F6C63A',bd:'rgba(246,198,58,.55)',bg:'transparent'},dumping:{c:'#FF3DAE',bd:'rgba(255,61,174,.6)',bg:'rgba(255,61,174,.06)'},done:{c:'#0B0B09',bd:'#F2E409',bg:'#F2E409'},fail:{c:'#FF3D5E',bd:'rgba(255,61,94,.5)',bg:'transparent'},blocked:{c:'#82806A',bd:'rgba(150,146,120,.3)',bg:'transparent'}}[dstate];
+      const dtext={idle:(dk==='git'?'⤓ DUMP .git':dk==='key'?'⤓ DUMP KEY':'⤓ DUMP'),dumping:'⟳ DUMPING…',done:'✓ 已抓存 '+(ds.size||''),fail:'✗ 失敗',blocked:'⛔ 越界'}[dstate];
+      return {...f, c:SM[f.sev].c, k:SM[f.sev].k, host:this.hostOf(f.tid),
+      open:s.openFinding===f.id, statC: f.stat==='confirmed'?'#F2E409':(f.stat==='false-positive'?'#82806A':(f.stat==='candidate'?'#FF3DAE':'#3AA0FF')),
+      statLabel:{new:'NEW',confirmed:'CONFIRMED',['false-positive']:'FALSE-POS',candidate:'CANDIDATE'}[f.stat],
+      click:()=>this.toggleFinding(f.id), confirm:()=>this.mark(f.id,'confirmed'), fp:()=>this.mark(f.id,'false-positive'),
+      cfBd:cfOn?'#F2E409':'rgba(150,146,120,.25)', cfC:cfOn?'#0B0B09':'#F2E409', cfBg:cfOn?'#F2E409':'transparent',
+      fpBd:fpOn?'#82806A':'rgba(150,146,120,.25)', fpC:fpOn?'#0B0B09':'#82806A', fpBg:fpOn?'#82806A':'transparent',
+      sens, hasDump:!!dk, dumpTxt:dtext, dumpC:dbtn.c, dumpBd:dbtn.bd, dumpBg:dbtn.bg, dumpBusy:dstate==='dumping',
+      dump:()=>this.doDump(f.id), repro:()=>this.doRepro(f.id), revealed, revealTxt:revealed?'🙈 遮蔽':'👁 顯示', toggleReveal:()=>this.toggleReveal(f.id), proofView};});
+
+    // shell overlay
+    let shell=null;
+    if(s.shell){ const t=this.meta(s.shell.tid); const sg=this.STAGES.find(x=>x.id===s.shell.sid);
+      const mode=s.shell.mode||'log';
+      const f=(s.shell.fid?this.FIND.find(x=>x.id===s.shell.fid):null)||this.activeFindings().find(x=>x.tid===s.shell.tid&&x.sid===s.shell.sid);
+      const v=(s.status[s.shell.tid]||{})[s.shell.sid];
+      const cand=f&&f.cand&&s.intensity==='recon';
+      const outLines=(f&&!cand)?[{c:'#F2E409',t:'❯ '+f.cmd},...f.out.map(o=>({c:'#82806A',t:o})),{c:'#4E4C3C',t:''},{c:'#3AA0FF',t:'# SAFE-CHECK ORACLE · '+f.ok},{c:'#3AA0FF',t:'# '+f.okLabel},...f.proof.map(p=>({c:'#DAD8C8',t:'  '+p})),{c:'#4E4C3C',t:''},{c:SM[f.sev].c,t:'>>> ['+SM[f.sev].k+'] '+f.title+'  (CVSS '+f.cvss+')'}]
+        : cand?[{c:'#F2E409',t:'❯ '+f.cmd.replace(/--file-read=\S+|-f$/,'').trim()+'  # candidate-only'},{c:'#FF3DAE',t:'recon 模式:僅列候選,未實打'},...f.out.slice(0,1).map(o=>({c:'#82806A',t:o}))]
+        : [{c:'#F2E409',t:'❯ '+this.genCmd(t,sg)},...this.genOut(t,sg).map(o=>({c:'#82806A',t:o})),{c:'#4E4C3C',t:''},{c:'#15707F',t:'# clean · no finding · scope in-bounds'}];
+      const ex=(mode!=='log' && f)? this.shellExtra(f,mode) : null;
+      shell={host:t.host, ip:t.ip, stage:(ex?f.title:sg.name), sub:(ex?f.cn:sg.cn), tool:sg.tool, mode,
+        hdr:(ex?ex.hdr:'RAW LOG'), tag:(ex?ex.tag:'LOG'), tagC:(ex?ex.tagC:'#3AA0FF'),
+        status:(ex?ex.status:(v==='hit'?'HIT':v==='cand'?'CANDIDATE':v==='done'?'CLEAN':v==='running'?'RUNNING':v==='skip'?'SKIPPED':'QUEUED')),
+        statC:(ex?ex.statC:(v==='hit'?'#FF3D5E':v==='cand'?'#FF3DAE':v==='done'?'#F2E409':'#82806A')),
+        cmd:(ex?ex.cmd:(f?f.cmd:this.genCmd(t,sg))), lines:(ex?ex.lines:outLines), dl:(ex?ex.dl:null), hasDl:!!(ex&&ex.dl),
+        hasF:!!(f&&mode==='log'&&!cand), fid:f?f.id:null,
+        toFinding:(f&&mode==='log'&&!cand)?(()=>{this.setState({shell:null,view:'findings',openFinding:f.id});}):null };
+    }
+
+    // report preview
+    const repFmt=s.exportFmt;
+    const previewList=this.dispFindings().filter(f=>this.sevMeta[f.sev].r>=this.sevMeta[s.expOpts.minSev].r).map(f=>{const sec=this.SECRET[f.id];return {...f,c:SM[f.sev].c,k:SM[f.sev].k,host:this.hostOf(f.tid),sens:!!this.SENS[f.id],proofView:(s.expOpts.plaintext||!sec)?f.proof:f.proof.map(p=>p.split(sec[0]).join(sec[1]))};});
+
+    // intensity meta
+    const intens=[
+      {id:'full',name:'FULL',cn:'全跑 · 注入 + 弱密碼實際執行',stages:this.ALWAYS.length+this.ACTIVE.length,tag:'預設'},
+      {id:'recon',name:'RECON',cn:'探測全跑 · sqli/cred/wp 只列候選',stages:this.ALWAYS.length+this.ACTIVE.length,tag:'候選'},
+      {id:'passive',name:'PASSIVE',cn:'純被動盤點 · 只發良性 GET',stages:this.ALWAYS.length,tag:'唯讀'},
+    ].map(i=>({...i, on:i.id===s.intensity, bd:i.id===s.intensity?'#F2E409':'rgba(150,146,120,.18)', c:i.id===s.intensity?'#F2E409':'#82806A', click:()=>this.setIntensity(i.id)}));
+
+    const stagePrev=this.STAGES.map(sg=>({...sg, on:this.included(sg.id), cand:this.CANDIDATE.includes(sg.id)&&s.intensity==='recon',
+      c:this.included(sg.id)?(this.ACTIVE.includes(sg.id)?'#FF3DAE':'#F2E409'):'#4E4C3C'}));
+
+    const parsedRows=parsed.map(p=>({...p, c:p.inScope?'#F2E409':'#FF3D5E', badge:p.inScope?'IN-SCOPE':'BLOCKED · 越界',
+      bg:p.inScope?'rgba(242,228,9,.05)':'rgba(255,61,94,.07)', bd:p.inScope?'rgba(242,228,9,.25)':'rgba(255,61,94,.35)'}));
+
+    const runBtn = s.phase==='running'?{label:'⏸ PAUSE',c:'#FF3DAE'}: s.phase==='paused'?{label:'▶ RESUME',c:'#F2E409'}: s.phase==='done'?{label:'↻ RE-RUN',c:'#F2E409'}:{label:'▶ ARM & RUN',c:'#F2E409'};
+
+    const donePct=Math.round(s.progress*100);
+    const targetsDone=rows.filter(r=>r.pct===100).length;
+
+    return {
+      view:s.view, isSetup:s.view==='setup', isMonitor:s.view==='monitor', isFindings:s.view==='findings', isReport:s.view==='report',
+      targetsText:s.targetsText,
+      tabs:(v=>({setup:v('setup'),monitor:v('monitor'),findings:v('findings'),report:v('report')}))(x=>({c:s.view===x?'#F2E409':'#82806A',b:s.view===x?'#F2E409':'transparent',ts:s.view===x?'0 0 10px rgba(242,228,9,.6)':'none'})),
+      phase:s.phase, phaseLabel:{idle:'IDLE',running:'SCANNING',paused:'PAUSED',done:'COMPLETE'}[s.phase],
+      phaseC:{idle:'#82806A',running:'#FF3DAE',paused:'#FF3DAE',done:'#F2E409'}[s.phase],
+      running:s.phase==='running',
+      barAnim:(s.phase==='running' && !this.props.reduceMotion)?'erflow .8s linear infinite':'none', sweepOn:s.phase==='running' && !this.props.reduceMotion,
+      intensity:s.intensity, intensityUp:s.intensity.toUpperCase(),
+      elapsed:this.fmtT(s.elapsed), donePct, donePctStr:donePct+'%',
+      targetsDone, targetsTotal:active.length||parsed.filter(p=>p.inScope).length,
+      cCrit:cnt.critical,cHigh:cnt.high,cMed:cnt.medium,cLow:cnt.low,cInfo:cnt.info,
+      totalFindings:s.findings.length,
+      layout:this.props.pipelineLayout||'matrix', isMatrix:(this.props.pipelineLayout||'matrix')==='matrix', isRailLayout:(this.props.pipelineLayout||'matrix')==='rail',
+      stages:this.STAGES, stageHeads:this.STAGES.map(x=>({s:x.s,name:x.name})),
+      rows, logs, feed, hasFeed:feed.length>0,
+      banner:s.banner, bannerText:'掃描完成 · '+active.length+' 標的 · '+s.findings.length+' 筆 finding',
+      // setup
+      parsedRows, inN, outN, intens, stagePrev, canRun:inN>0 && s.phase!=='running',
+      runBtn, runIdle:s.phase==='idle'||s.phase==='done',
+      // findings
+      list, sevFilter:s.sevFilter, statFilter:s.statFilter, sortBy:s.sortBy, q:s.q,
+      sevChips:['critical','high','medium','low','info'].map(k=>{const on=s.sevFilter.includes(k);return {k,label:SM[k].k,c:SM[k].c,on,n:cnt[k],dot:on?1:.25,chipBd:on?SM[k].c:'rgba(150,146,120,.18)',chipBg:on?'rgba(150,146,120,.05)':'transparent',chipC:on?'#DAD8C8':'#82806A',click:()=>this.toggleSev(k)};}),
+      statChips:[['all','ALL'],['new','NEW'],['confirmed','CONFIRMED'],['false-positive','FALSE-POS'],['candidate','CANDIDATE']].map(([k,l])=>({k,l,on:s.statFilter===k,c:s.statFilter===k?'#F2E409':'#82806A',bd:s.statFilter===k?'#F2E409':'transparent',click:()=>this.setStat(k)})),
+      sortSevC:s.sortBy==='sev'?'#F2E409':'#82806A', sortCvssC:s.sortBy==='cvss'?'#F2E409':'#82806A',
+      listN:list.length,
+      // shell
+      shell, shellOpen:!!s.shell,
+      // report
+      repFmt, repFmtUp:s.exportFmt.toUpperCase(),
+      fmtChips:[['html','HTML'],['md','MARKDOWN'],['json','JSON']].map(([k,l])=>({k,l,on:s.exportFmt===k,c:s.exportFmt===k?'#F2E409':'#82806A',bd:s.exportFmt===k?'#F2E409':'rgba(150,146,120,.18)',click:()=>this.setFmt(k)})),
+      expOpts:s.expOpts, previewList, previewN:previewList.length,
+      optEvidence:s.expOpts.evidence, optRaw:s.expOpts.rawlog, optScope:s.expOpts.scope, minSev:s.expOpts.minSev,
+      evMark:s.expOpts.evidence?'✓':'', evC:s.expOpts.evidence?'#F2E409':'rgba(150,146,120,.35)', evBg:s.expOpts.evidence?'#F2E409':'transparent',
+      scMark:s.expOpts.scope?'✓':'', scC:s.expOpts.scope?'#F2E409':'rgba(150,146,120,.35)', scBg:s.expOpts.scope?'#F2E409':'transparent',
+      rawMark:s.expOpts.rawlog?'✓':'', rawC:s.expOpts.rawlog?'#F2E409':'rgba(150,146,120,.35)', rawBg:s.expOpts.rawlog?'#F2E409':'transparent',
+      toggleEvidence:()=>this.toggleOpt('evidence'), toggleScope:()=>this.toggleOpt('scope'), toggleRaw:()=>this.toggleOpt('rawlog'),
+      minLowBd:s.expOpts.minSev==='low'?'#F2E409':'rgba(150,146,120,.18)', minLowC:s.expOpts.minSev==='low'?'#F2E409':'#82806A',
+      minMedBd:s.expOpts.minSev==='medium'?'#F2E409':'rgba(150,146,120,.18)', minMedC:s.expOpts.minSev==='medium'?'#F2E409':'#82806A',
+      minHighBd:s.expOpts.minSev==='high'?'#F2E409':'rgba(150,146,120,.18)', minHighC:s.expOpts.minSev==='high'?'#F2E409':'#82806A',
+      // handlers
+      run:()=>this.run(), reset:()=>this.reset(), skip:()=>this.skip(),
+      goSetup:()=>this.setView('setup'), goMonitor:()=>this.setView('monitor'), goFindings:()=>this.setView('findings'), goReport:()=>this.setView('report'),
+      setFull:()=>this.setIntensity('full'), setRecon:()=>this.setIntensity('recon'), setPassive:()=>this.setIntensity('passive'),
+      onText:(e)=>this.setText(e), closeShell:()=>this.closeShell(), stop:(e)=>e.stopPropagation(),
+      toggleFinding:(id)=>this.toggleFinding(id), toggleSev:(k)=>this.toggleSev(k),
+      onQ:(e)=>this.setQ(e), setStat:(v)=>this.setStat(v), setSort:(v)=>this.setSort(v),
+      markFP:(id)=>this.mark(id,'false-positive'), markCF:(id)=>this.mark(id,'confirmed'),
+      setFmt:(f)=>this.setFmt(f), toggleOpt:(k)=>this.toggleOpt(k), download:()=>this.download(),
+      demoMode:s.demoMode, toast:s.toast, hasToast:!!s.toast, dumpAll:()=>this.dumpAll(), clearDumps:()=>this.clearDumps(), togglePlain:()=>this.toggleOpt('plaintext'),
+      plMark:s.expOpts.plaintext?'✓':'', plC:s.expOpts.plaintext?'#FF3D5E':'rgba(150,146,120,.35)', plBg:s.expOpts.plaintext?'#FF3D5E':'transparent', plainDanger:s.expOpts.plaintext,
+      sortSev:()=>this.setSort('sev'), sortCvss:()=>this.setSort('cvss'),
+      setMinLow:()=>this.setState({expOpts:{...s.expOpts,minSev:'low'}}),
+      setMinMed:()=>this.setState({expOpts:{...s.expOpts,minSev:'medium'}}),
+      setMinHigh:()=>this.setState({expOpts:{...s.expOpts,minSev:'high'}}),
+    };
+  }
+}
+</script>
+</body>
+</html>
