@@ -130,6 +130,13 @@ def cmd_setup(args) -> int:
             print(f"[+] cloning {name}")
             subprocess.run(["git", "clone", "--depth", "1", url, dest], check=False)
 
+    # 2b) install each cloned tool's own Python requirements (so it runs headless)
+    for name in ("php-cgi-Injector", "react2shell-scanner", "dirsearch"):
+        req = os.path.join(tp, name, "requirements.txt")
+        if os.path.exists(req):
+            print(f"[+] pip install -r {name}/requirements.txt")
+            _pip_install(["-r", req])
+
     # 3) Native scanners we can't pip-install — print exact per-OS commands
     _print_native_hints()
     cmd_doctor(args)
