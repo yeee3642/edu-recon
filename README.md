@@ -10,6 +10,31 @@ driven from a browser.
 > engagement you can re-arm a locked scope allowlist with `scope_enforce: true`
 > in `config.yaml` (every stage then re-checks scope before it acts).
 
+## Quickstart · 複製貼上即可
+
+**Kali / Debian / Ubuntu** — paste the whole block:
+
+```bash
+sudo apt update && sudo apt install -y python3 python3-venv git nmap sqlmap hydra dirsearch
+git clone https://github.com/ericchen913900/edu-recon.git
+cd edu-recon
+chmod +x run.sh
+./run.sh
+```
+
+That's it. `run.sh` builds the venv, clones the bundled tools + installs deps,
+runs `doctor`, then launches the **full-power** console on
+`http://127.0.0.1:8770` and opens your browser. (Ctrl-C stops it; re-run `./run.sh`
+any time.)
+
+**Windows (Git Bash / WSL):**
+
+```bash
+git clone https://github.com/ericchen913900/edu-recon.git
+cd edu-recon
+bash run.sh          # first run auto-creates the venv + clones tools; nmap must be on PATH
+```
+
 ## What it does
 
 ```
