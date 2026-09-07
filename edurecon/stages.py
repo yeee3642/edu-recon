@@ -290,14 +290,27 @@ def _builtin_webdisco(ctx: StageCtx, bases: list[str]) -> int:
     return added
 
 
+def _dirsearch_cmd(cfg: Config) -> list[str] | None:
+    """Native dirsearch binary (Kali) first, else cloned dirsearch.py via python."""
+    b = _bin(cfg, "dirsearch")
+    if b and b.lower().endswith(".py"):
+        return [cfg.dirsearch_python, b]
+    if b:
+        return [b]
+    script = os.path.join(cfg.dirsearch_dir, "dirsearch.py")
+    if os.path.exists(script):
+        return [cfg.dirsearch_python, script]
+    return None
+
+
 def stage_webdisco(ctx: StageCtx) -> None:
     cfg = ctx.cfg
-    ds = _bin(cfg, "dirsearch")
     bases = _root_bases(ctx.ts)
     if not bases:
         ctx.ts.stage("webdisco").note = "no http service"
         return
-    if not ds:                                   # built-in fallback path discovery
+    ds_cmd = _dirsearch_cmd(cfg)
+    if not ds_cmd:                               # built-in fallback path discovery
         n = _builtin_webdisco(ctx, bases)
         _detect_wordpress(ctx)
         ctx.ts.stage("webdisco").note = f"{n} path(s) · built-in (install dirsearch for full)"
@@ -307,11 +320,13 @@ def stage_webdisco(ctx: StageCtx) -> None:
             return
         ctx.scope.check(ctx.ts.host)
         out_json = ctx.artifact(f"dirsearch-{i}.json")
-        argv = [ds, "-u", base, "-e", cfg.web_extensions,
+        argv = [*ds_cmd, "-u", base, "-e", cfg.web_extensions,
                 "-t", str(cfg.web_threads), "--exclude-status", cfg.web_exclude_status,
-                "--format", "json", "-o", out_json, "-q", "--random-agent"]
-        if os.path.exists(cfg.web_wordlist):     # else dirsearch uses its built-in list
-            argv[3:3] = ["-w", cfg.web_wordlist]
+                "-O", "json", "-o", out_json, "-q", "--random-agent"]
+        # full sweep uses dirsearch's built-in db/dicc.txt (~9.7k); a configured
+        # wordlist only overrides when web_fulldict is off.
+        if not cfg.web_fulldict and cfg.web_wordlist and os.path.exists(cfg.web_wordlist):
+            argv += ["-w", cfg.web_wordlist]
         ctx.run(argv, stage="webdisco", log_name=f"dirsearch-{i}.log")
         ctx.record_artifact("webdisco", out_json)
         paths = parse.parse_dirsearch_json(out_json)

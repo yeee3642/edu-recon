@@ -53,6 +53,11 @@ class Config:
     subfinder_bin: str = "subfinder"
     curl_bin: str = "curl"
 
+    # cloned dirsearch (maurosoria/dirsearch) — run via python when there's no
+    # PATH binary. Its bundled db/dicc.txt (~9.7k entries) is the full sweep.
+    dirsearch_dir: str = os.path.join(ROOT, "third_party", "dirsearch")
+    dirsearch_python: str = field(default_factory=lambda: sys.executable)
+
     # --- wp2shell (xAL6/php WordPress SQLi->shell engine, cloned repo) ---
     wp2shell_dir: str = os.path.join(ROOT, "third_party", "wp2shell")
     # Run bundled Python tools under the SAME interpreter as edu-recon so they
@@ -81,6 +86,7 @@ class Config:
 
     # --- web discovery (dirsearch) ---
     web_wordlist: str = os.path.join(ROOT, "wordlists", "web-common.txt")
+    web_fulldict: bool = True             # use dirsearch's full db/dicc.txt (全掃); ignore web_wordlist
     web_extensions: str = "php,asp,aspx,jsp,html,txt,zip,tar.gz,sql,bak,json,env,git"
     web_threads: int = 25
     web_exclude_status: str = "404"
@@ -187,6 +193,9 @@ class Config:
             b = getattr(self, f"{attr}_bin")
             out[attr] = b if (os.path.isabs(b) and os.path.exists(b)) else shutil.which(b)
         # cloned script tools (not PATH binaries)
+        if not out.get("dirsearch"):            # cloned dirsearch fallback (no PATH binary)
+            dds = os.path.join(self.dirsearch_dir, "dirsearch.py")
+            out["dirsearch"] = dds if os.path.exists(dds) else None
         exploit = os.path.join(self.phpcgi_dir, "exploit.py")
         out["phpcgi"] = exploit if os.path.exists(exploit) else None
         r2s = os.path.join(self.react2shell_dir, "react2shell-scanner.py")

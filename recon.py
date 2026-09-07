@@ -119,6 +119,7 @@ def cmd_setup(args) -> int:
         ("php-cgi-Injector", "https://github.com/Night-have-dreams/php-cgi-Injector.git"),
         ("react2shell-scanner", "https://github.com/hidden-investigations/react2shell-scanner.git"),
         ("wp2shell", "https://github.com/xAL6/wp2shell.git"),
+        ("dirsearch", "https://github.com/maurosoria/dirsearch.git"),
     ]
     for name, url in repos:
         dest = os.path.join(tp, name)

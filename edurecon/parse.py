@@ -104,7 +104,8 @@ def parse_dirsearch_json(path: str) -> list[WebPath]:
         if not url:
             continue
         status = _int(e.get("status") or e.get("status-code") or e.get("code"))
-        length = _int(e.get("content-length") or e.get("length") or e.get("content_length"))
+        length = _int(e.get("content-length") or e.get("length")
+                      or e.get("content_length") or e.get("contentLength"))
         redirect = e.get("redirect") or e.get("location") or ""
         out.append(WebPath(url=url, status=status, length=length, redirect=redirect or ""))
     return out
