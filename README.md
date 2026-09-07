@@ -143,6 +143,53 @@ python recon.py scan -t targets.txt --intensity full
 # reports land in runs/<run-id>/report.{md,html,json}
 ```
 
+## Command reference · 指令一覽
+
+Launchers:
+
+| command | what it does |
+|---|---|
+| `./run.sh` | one-command **full-power** launch: venv/setup/doctor → console → opens browser. `HOST=… PORT=… ./run.sh` to override. |
+
+`recon.py` subcommands (prefix with the venv python, e.g. `.venv/bin/python`):
+
+| command | what it does |
+|---|---|
+| `recon.py setup` | clone bundled tools (php-cgi-Injector / react2shell-scanner / wp2shell / dirsearch) + pip-install their deps |
+| `recon.py doctor` | show which scanners resolved (nmap / sqlmap / hydra / dirsearch / dalfox / subfinder / bundled tools) |
+| `recon.py serve [--host H] [--port P]` | launch the web console (default `127.0.0.1:8770`) |
+| `recon.py scan -t targets.txt [--intensity full\|recon\|passive]` | headless scan of a target file |
+| `recon.py scan http://host/ 10.0.0.0/24 …` | headless scan of inline targets |
+| `recon.py repro <run-id> [--finding <id>] [--out DIR]` | print / write a runnable **reproduction PoC** per confirmed finding |
+| `recon.py payout <run-id>` | legal **disclosure / bounty routing** per confirmed finding |
+
+Common flags (all subcommands): `--config FILE` (yaml/json overrides) · `--intensity` · `--concurrency N` · `--workdir DIR`.
+
+Scan targets accept: `IP` · `host` · `URL` · `CIDR` · `domain` · `host:port` (one per line in a file, or inline / pasted in the console).
+
+Web API (what the console drives; handy for scripting):
+
+| endpoint | purpose |
+|---|---|
+| `POST /api/runs {targets,intensity,concurrency,scope_enforce}` | start a run → `{id}` |
+| `GET  /api/runs` · `GET /api/runs/{id}` | list runs · full run (targets/stages/findings/webpaths) |
+| `GET  /api/runs/{id}/logs?since=N` | incremental live log |
+| `GET  /api/runs/{id}/artifact?path=…` | raw tool log / saved dump |
+| `GET  /api/runs/{id}/repro[?finding_id=…]` | reproduction PoC script(s) |
+| `POST /api/runs/{id}/finding {finding_id,reviewed,false_positive}` | triage a finding |
+| `POST /api/runs/{id}/dump {finding_id}` · `POST …/dumps/clear` | capture a leak (file/.git-source/key) · clear captures |
+| `POST /api/runs/{id}/report` · `POST …/cancel` | export report · cancel run |
+
+Examples:
+
+```bash
+./run.sh                                             # full-power console + browser
+.venv/bin/python recon.py scan -t targets.txt --intensity full
+.venv/bin/python recon.py repro  run-20260907-185021 --out pocs/   # write repro_*.sh
+.venv/bin/python recon.py payout run-20260907-185021              # legal cash-out routing
+HOST=0.0.0.0 PORT=9000 ./run.sh                      # bind elsewhere (tunnel it, don't expose)
+```
+
 ## Intensity
 
 | level    | what runs |
