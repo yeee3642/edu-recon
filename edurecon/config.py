@@ -179,7 +179,9 @@ class Config:
 
     # --- scope safety ---
     extra_allowed_cidrs: list[str] = field(default_factory=list)
-    scope_enforce: bool = True           # False => demo mode: scan whatever you type
+    scope_enforce: bool = False          # default OFF: operator owns authorization,
+    #                                      scan/dump whatever you type. Set True for a
+    #                                      real engagement with a locked scope allowlist.
 
     # ---------------------------------------------------------------
     def stage_runs(self, name: str) -> bool:

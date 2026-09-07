@@ -227,7 +227,7 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
             if not url.lower().startswith(("http://", "https://")):
                 return self._send(400, {"error": "nothing to dump (no url/value)"})
             host = urlparse(url).hostname or ""
-            if host not in hosts:
+            if cfg.scope_enforce and host not in hosts:
                 return self._send(403, {"error": f"out of scope: {host!r} not a target of this run"})
             data, ctype, err = _raw_fetch(url)
             if err:
@@ -245,7 +245,7 @@ def serve(cfg: Config, host: str = "127.0.0.1", port: int = 8770) -> None:
 
         def _dump_git(self, rid, url, hosts):
             host = urlparse(url).hostname or ""
-            if host not in hosts:
+            if cfg.scope_enforce and host not in hosts:
                 return self._send(403, {"error": f"out of scope: {host!r}"})
             low = url.lower()
             base = url[:low.find("/.git")] + "/.git/"
