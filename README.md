@@ -113,6 +113,18 @@ python recon.py payout <run-id>          # legal disclosure / bounty routing per
   ```
   `sudo systemctl enable --now edu-recon`
 
+## 一鍵啟動 · One-command launch (full power)
+
+```bash
+chmod +x run.sh && ./run.sh          # 滿血:自動 venv/setup/doctor → 全火力 console → 開瀏覽器
+# HOST=0.0.0.0 PORT=9000 ./run.sh    # override bind/port
+```
+
+`run.sh` creates the venv on first run, clones the bundled tools, runs `doctor`,
+then serves the console at **full power** — intensity `full`, `nmap -sC --script
+vuln`, the full dirsearch `db/dicc.txt` sweep, every resolved scanner, scope-lock
+off — on `http://127.0.0.1:8770` and opens your browser. Ctrl-C stops it.
+
 ## Use — web control panel
 
 ```bash
