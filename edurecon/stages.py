@@ -238,15 +238,69 @@ def stage_portscan(ctx: StageCtx) -> None:
     ctx.ts.stage("portscan").note = f"{len(ctx.ts.services)} open port(s)"
 
 
+# common web paths probed by the built-in web-discovery fallback (no dirsearch).
+WEBDISCO_COMMON = [
+    "/robots.txt", "/sitemap.xml", "/.well-known/security.txt", "/favicon.ico",
+    "/admin", "/admin/", "/administrator/", "/login", "/login.php", "/admin.php",
+    "/wp-login.php", "/wp-admin/", "/wp-json/", "/xmlrpc.php", "/wp-content/",
+    "/phpmyadmin/", "/adminer.php", "/dbadmin/", "/server-status", "/server-info",
+    "/phpinfo.php", "/info.php", "/.git/HEAD", "/.git/config", "/.svn/entries",
+    "/.env", "/.htaccess", "/.htpasswd", "/config.php", "/config.php.bak",
+    "/configuration.php", "/web.config", "/backup/", "/backups/", "/backup.zip",
+    "/backup.sql", "/db.sql", "/dump.sql", "/database.sql", "/uploads/", "/files/",
+    "/images/", "/img/", "/assets/", "/static/", "/js/", "/css/", "/api", "/api/",
+    "/api/v1/", "/swagger/", "/swagger-ui/", "/openapi.json", "/graphql",
+    "/actuator", "/actuator/env", "/health", "/status", "/metrics", "/debug",
+    "/test/", "/tmp/", "/temp/", "/old/", "/dev/", "/staging/", "/readme.txt",
+    "/README.md", "/CHANGELOG.md", "/LICENSE", "/package.json", "/composer.json",
+    "/composer.lock", "/wp-config.php.bak", "/user/login", "/user/register",
+    "/console", "/cgi-bin/", "/.DS_Store", "/crossdomain.xml", "/index.php",
+    "/index.html", "/home", "/dashboard", "/portal", "/cpanel", "/webmail",
+]
+_WEBDISCO_KEEP = {200, 204, 301, 302, 303, 307, 308, 401, 403, 405}
+
+
+def _builtin_webdisco(ctx: StageCtx, bases: list[str]) -> int:
+    """dirsearch-free path discovery: probe a common-paths list, record hits."""
+    cfg = ctx.cfg
+    seen: set[str] = set()
+    added = 0
+    for base in bases:
+        if ctx.aborted() or added >= 500:
+            break
+        ctx.scope.check(ctx.ts.host)
+        root = base.rstrip("/")
+        for path in WEBDISCO_COMMON:
+            if ctx.aborted() or added >= 500:
+                break
+            url = root + path
+            if url in seen:
+                continue
+            seen.add(url)
+            st, hdrs, body = webhttp.get(url, cfg.http_timeout, cfg.user_agent, max_bytes=4096)
+            if st not in _WEBDISCO_KEEP:
+                continue
+            if st == 200 and _looks_like_html_404(body):
+                continue
+            clen = hdrs.get("Content-Length") or hdrs.get("content-length")
+            length = int(clen) if (clen and str(clen).isdigit()) else len(body)
+            redirect = hdrs.get("Location") or hdrs.get("location") or ""
+            ctx.ts.webpaths.append(WebPath(url=url, status=st, length=length, redirect=redirect))
+            added += 1
+    return added
+
+
 def stage_webdisco(ctx: StageCtx) -> None:
     cfg = ctx.cfg
     ds = _bin(cfg, "dirsearch")
     bases = _root_bases(ctx.ts)
-    if not ds:
-        ctx.ts.stage("webdisco").note = "dirsearch not found; skipped"
-        return
     if not bases:
         ctx.ts.stage("webdisco").note = "no http service"
+        return
+    if not ds:                                   # built-in fallback path discovery
+        n = _builtin_webdisco(ctx, bases)
+        _detect_wordpress(ctx)
+        ctx.ts.stage("webdisco").note = f"{n} path(s) · built-in (install dirsearch for full)"
         return
     for i, base in enumerate(bases):
         if ctx.aborted():

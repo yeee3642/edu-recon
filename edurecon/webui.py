@@ -674,7 +674,7 @@ function vMonitor(){const tg=targets();const c=counts();const done=tg.filter(t=>
    <div style="padding-right:8px;overflow:hidden">
     <div style="display:flex;align-items:center;gap:6px"><span style="width:5px;height:5px;border-radius:50%;background:${sc};flex:none"></span>
      <span style="font-size:11px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.host)}</span></div>
-    <span style="font-size:8px;color:var(--faint);padding-left:11px">${esc(t.status)} · ${rp}%</span></div>${cells}</div>`;}).join('');
+    <div style="padding-left:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span style="font-size:8px;color:var(--faint)">${esc(t.status)} · ${rp}%</span>${(t.webpaths||[]).length?`<span onclick="event.stopPropagation();openPaths('${esc(t.host)}')" style="cursor:pointer;font-size:8px;color:var(--blue);border:1px solid rgba(58,160,255,.4);padding:0 4px">🗂 ${(t.webpaths||[]).length} 路徑</span>`:''}</div></div>${cells}</div>`;}).join('');
  const feed=allFindings().filter(f=>!f.false_positive).slice().reverse().slice(0,16).map(f=>`
    <div class="fcard" style="border-left-color:${SM[f.severity].c}">
     <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">
@@ -774,6 +774,7 @@ function vFindings(){const c=counts();const list=dispFindings();
    <div style="display:flex;align-items:center;gap:14px"><span class="lab">STATUS</span>${statChips}<span style="flex:1"></span>
     <span class="lab">SORT</span><span onclick="ST.sortBy='sev';render()" style="cursor:pointer;font-size:10px;color:${ST.sortBy==='sev'?'var(--y)':'var(--faint)'}">SEVERITY</span>
     <span onclick="ST.sortBy='cvss';render()" style="cursor:pointer;font-size:10px;color:${ST.sortBy==='cvss'?'var(--y)':'var(--faint)'}">CVSS</span>
+    <span onclick="openPaths()" class="reveal" style="color:var(--blue);border-color:rgba(58,160,255,.4)">🗂 網站路徑</span>
     <span onclick="dumpAll()" class="reveal" style="color:var(--mag);border-color:rgba(255,61,174,.4)">⤓ Dump 全部洩漏</span>
     <span onclick="clearDumps()" class="reveal" style="color:var(--faint);border-color:var(--line2)">🧹 清除 dumps</span>
     <span onclick="setView('report')" style="cursor:pointer;font-size:10px;font-weight:700;color:var(--y);border:1px solid var(--y);padding:6px 13px">匯出報告 →</span></div></div>
@@ -817,6 +818,14 @@ async function openCell(tid,sid){const t=targets().find(x=>(x.raw||x.host)===tid
  const txt=await fetch('/api/runs/'+ST.runId+'/artifact?path='+encodeURIComponent(arts[0])).then(r=>r.text()).catch(()=>'(讀取失敗)');
  const cmdm=txt.match(/^#\s\$\s(.+)/m);
  showShell({title:meta.n+' / '+meta.cn,sub:t.host+' · '+meta.tool,cmd:cmdm?cmdm[1]:meta.tool,status:statLabel,statC,body:txt,copy:cmdm?cmdm[1]:''});}
+function openPaths(host){const tg=host?targets().filter(t=>t.host===host):targets();
+ let lines=[];let n=0;
+ for(const t of tg){const wp=(t.webpaths||[]).slice().sort((a,b)=>(''+a.url).localeCompare(''+b.url));
+  if(host||wp.length)lines.push('# '+t.host+'  ('+wp.length+' paths)');
+  for(const w of wp){n++;lines.push('  '+String(w.status).padEnd(4)+' '+String(w.length||0).padStart(8)+'B  '+w.url+(w.redirect?' → '+w.redirect:''));}
+  if(host||wp.length)lines.push('');}
+ if(!n)lines=['# 尚無掃到的路徑。','# webdisco 這輪沒產出(標的無 HTTP、或尚未跑到該 stage)。','# 安裝 dirsearch 可跑完整字典;未安裝時走內建 common-paths 探測。'];
+ showShell({mode:'log',title:'網站路徑 · WEB PATHS'+(host?' · '+host:''),sub:n+' paths · dirsearch / 內建探測',cmd:'webdisco',status:'PATHS',statC:'var(--blue)',body:lines.join('\n'),copy:lines.filter(l=>/^\s+\d/.test(l)).map(l=>l.trim().split(/\s+/).pop()).join('\n')});}
 function showShell(o){ST._shell=o;renderOverlay();}
 function closeShell(){ST._shell=null;renderOverlay();}
 function renderOverlay(){const el=document.getElementById('overlay');const o=ST._shell;
