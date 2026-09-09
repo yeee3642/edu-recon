@@ -7,6 +7,7 @@ runs/
 third_party/
 *.log
 _smoke.py
+_lab_inject_test.py
 _remote_test.sh
 _bootstrap_test.sh
 targets.txt

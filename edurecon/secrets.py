@@ -69,6 +69,29 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern, str]] = [
                 r"""\s*[=:]\s*['\"]([A-Za-z0-9_\-\/+]{12,64})['\"]"""), "medium"),
 ]
 
+# DB credential leaks (category "db-cred") — the captured group 1 is the password.
+# Covers .env / define() / framework config / connection URIs / ADO-JDBC strings,
+# i.e. the shapes DB passwords actually leak in on an education stack.
+DBCRED_PATTERNS: list[tuple[str, re.Pattern, str]] = [
+    ("DB password (env / define / config)",
+     re.compile(r"""(?ix)\b(?:DB|DATABASE|MYSQL|MARIADB|PG|PGSQL|POSTGRES|POSTGRESQL|"""
+                r"""MONGO|MONGODB|REDIS|MSSQL|SQL|ORACLE)_?(?:PASS(?:WORD)?|PWD)\b"""
+                r"""['\"]?\s*(?:=>|=|:|,)\s*['\"]?([^\s'\"]{3,80})"""), "critical"),
+    ("Shell DB password var (PGPASSWORD / MYSQL_PWD)",
+     re.compile(r"(?i)\b(?:PGPASSWORD|MYSQL_PWD|MYSQL_ROOT_PASSWORD|POSTGRES_PASSWORD|"
+                r"MARIADB_PASSWORD|MONGO_INITDB_ROOT_PASSWORD)\s*=\s*['\"]?([^\s'\"]{3,80})"), "critical"),
+    ("DB connection URI credentials",
+     re.compile(r"(?i)\b(?:mysql|mariadb|postgres(?:ql)?|mongodb(?:\+srv)?|redis|rediss|"
+                r"mssql|sqlserver|jdbc:[a-z0-9]+)://[^\s:@/]{0,64}:([^\s:@/]{1,64})@[A-Za-z0-9._\-]+"),
+     "critical"),
+    ("ADO/JDBC connection-string password",     # gated on a connection-string hint (low FP)
+     re.compile(r"(?i)(?:^|[;\s])(?:password|pwd)\s*=\s*([^;'\"\s]{3,80})\s*;"), "high"),
+]
+# the ADO/JDBC pattern only counts when the text really looks like a connection string
+_CONNSTR_HINT = re.compile(
+    r"(?i)(?:data\s*source|initial\s*catalog|server\s*=|host\s*=|jdbc:|uid\s*=|"
+    r"integrated\s*security|trusted_connection)")
+
 API_DOC_PATHS = [
     "/swagger.json", "/swagger/v1/swagger.json", "/openapi.json", "/v2/api-docs",
     "/v3/api-docs", "/api-docs", "/api/swagger.json", "/swagger-ui.html",
@@ -87,7 +110,19 @@ def scan_text(url: str, text: str) -> list[dict]:
         for m in rx.finditer(text):
             val = m.group(0)
             hits.append({"type": name, "severity": sev, "url": url,
-                         "match": _mask(val), "value": val[:120]})
+                         "match": _mask(val), "value": val[:120],
+                         "category": "secret-leak"})
+    # DB credentials — password is capture group 1; keep the whole match as context
+    has_connstr = bool(_CONNSTR_HINT.search(text))
+    for name, rx, sev in DBCRED_PATTERNS:
+        if name.startswith("ADO") and not has_connstr:
+            continue                          # avoid FP on stray `password=...;`
+        for m in rx.finditer(text):
+            pw = (m.group(1) if m.groups() else m.group(0)) or ""
+            val = m.group(0)
+            hits.append({"type": name, "severity": sev, "url": url,
+                         "match": _mask(pw), "value": val[:160],
+                         "category": "db-cred"})
     return hits
 
 

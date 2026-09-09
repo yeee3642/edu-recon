@@ -527,8 +527,10 @@ def stage_secrets(ctx: StageCtx) -> None:
                     continue
                 seen_secret.add(key)
                 hits += 1
-                ctx.finding(stage="secrets", category="secret-leak",
-                            title=f"Leaked secret: {h['type']}",
+                cat = h.get("category", "secret-leak")
+                title = (f"Exposed DB credential: {h['type']}" if cat == "db-cred"
+                         else f"Leaked secret: {h['type']}")
+                ctx.finding(stage="secrets", category=cat, title=title,
                             severity=h["severity"], confidence="high",
                             evidence={"url": h["url"], "match": h["match"],
                                       "value": h["value"]})
@@ -738,15 +740,20 @@ def stage_sqli(ctx: StageCtx, candidate_only: bool = False) -> None:
     # (1) built-in error-based quick pass (works even without sqlmap)
     if cfg.sqlerr_quickpass:
         try:
-            for r in webscan.probe_sql_errors(ctx.ts.param_urls, ctx.ts.forms, cfg):
+            _TT = {"error-based": "error-based", "boolean-blind": "boolean-blind",
+                   "time-based": "time-based / SLEEP"}
+            for r in webscan.probe_sqli(ctx.ts.param_urls, ctx.ts.forms, cfg):
                 hits += 1
+                tech = r.get("technique", "sqli")
+                ev = {"url": r["url"], "method": r["method"],
+                      "parameter": r["param"], "technique": tech,
+                      "payload": r.get("payload", "")}
+                ev.update(r.get("evidence", {}))
                 ctx.finding(stage="sqli", category="sqli",
-                            title=f"SQL error-based injection likely ({r['param']})",
-                            severity="high", confidence="high",
-                            evidence={"url": r["url"], "method": r["method"],
-                                      "parameter": r["param"], "sql_errors": r["errors"]})
+                            title=f"SQL injection ({_TT.get(tech, tech)}) in {r['param']}",
+                            severity="high", confidence="high", evidence=ev)
         except Exception as e:
-            ctx.logger(f"[{ctx.ts.host}] sqlerr quickpass error: {e}")
+            ctx.logger(f"[{ctx.ts.host}] sqli quickpass error: {e}")
 
     # (2) sqlmap deep pass
     sqlmap = _bin(cfg, "sqlmap")
@@ -824,7 +831,8 @@ def stage_xss(ctx: StageCtx) -> None:
                             title=f"Reflected XSS ({r['context']}) in {r['param']}",
                             severity="high", confidence="high",
                             evidence={"url": r["url"], "method": r["method"],
-                                      "parameter": r["param"], "context": r["context"]})
+                                      "parameter": r["param"], "context": r["context"],
+                                      "payload": r.get("payload", "")})
         except Exception as e:
             ctx.logger(f"[{ctx.ts.host}] xss probe error: {e}")
     ctx.ts.stage("xss").note = f"{hits} xss finding(s)"

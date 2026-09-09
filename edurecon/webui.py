@@ -543,7 +543,7 @@ const REMED={cve:'升級受影響元件至修補版本;下架對外 CGI/管理�
  'secret-leak':'移除外露資源、輪換洩漏憑證、加存取控制。','vcs-leak':'移除對外 .git;封鎖點目錄;改部署產物。',
  'backup-leak':'移除備份檔;禁止 web 存取備份路徑。','admin-panel':'面板限內網/VPN;IP 白名單。',
  'dir-listing':'關閉 autoindex (Options -Indexes)。','weak-cred':'停用預設帳號;強密碼 + MFA。',
- 'xss':'輸出編碼;CSP;參數過濾。','sqli':'參數化查詢;最小權限 DB;WAF。','edtech':'升級至受支援分支;資料目錄移出 web root。','vuln-version':'升級至受支援版本。'};
+ 'xss':'輸出編碼;CSP;參數過濾。','sqli':'參數化查詢;最小權限 DB;WAF。','db-cred':'立即輪換外洩的資料庫密碼;設定檔移出 web root;DB 僅限內網連線;改用環境變數/祕密管理。','edtech':'升級至受支援分支;資料目錄移出 web root。','vuln-version':'升級至受支援版本。'};
 let ST={view:'setup',runId:null,run:null,logs:[],logIdx:0,intensity:'full',
  targetsText:'http://127.0.0.1:8081\nhttp://127.0.0.1:8082',
  sev:new Set(['critical','high','medium','low','info']),statF:'all',q:'',sortBy:'sev',

@@ -158,12 +158,22 @@ class Config:
     sqlmap_crawl: int = 2
     sqlmap_forms: bool = True
     sqlmap_extra: list[str] = field(default_factory=list)
-    sqlerr_quickpass: bool = True        # built-in error-based heuristic before sqlmap
+    sqlerr_quickpass: bool = True        # built-in SQLi quick pass before sqlmap
+    # built-in SQLi breadth ("大量嘗試"): error + boolean-blind + time-blind, all benign
+    sqli_error_based: bool = True        # DB error-signature differential
+    sqli_boolean_blind: bool = True      # 1=1 vs 1=2 response differential (SELECT-only)
+    sqli_time_blind: bool = True         # SLEEP/pg_sleep/WAITFOR timing oracle
+    sqli_time_delay: int = 5             # seconds the sleep payload asks for
+    sqli_time_budget: int = 8            # max time-based probes per target (they're slow)
+    sqli_max_params: int = 40            # cap params/inputs injected per target
 
     # --- XSS ---
     xss_enabled: bool = True
     dalfox_bin: str = "dalfox"           # preferred engine when present
-    xss_builtin: bool = True             # reflected-XSS canary probe fallback
+    xss_builtin: bool = True             # built-in reflected-XSS probe (breadth backstop)
+    xss_payload_budget: int = 400        # max injected XSS requests per target ("大量嘗試")
+    xss_stop_on_first_ctx: bool = True   # one confirmed context per param is enough
+    xss_max_params: int = 40             # cap params/inputs injected per target
 
     # --- hydra weak-password ---
     userlist: str = os.path.join(ROOT, "wordlists", "users.txt")
