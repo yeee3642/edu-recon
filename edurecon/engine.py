@@ -16,6 +16,7 @@ from .store import Run, RunStore
 from . import stages, triage
 
 _DISPATCH = {
+    "shodan":    lambda c, co: stages.stage_shodan(c),
     "portscan":  lambda c, co: stages.stage_portscan(c),
     "webdisco":  lambda c, co: stages.stage_webdisco(c),
     "exposures": lambda c, co: stages.stage_exposures(c),

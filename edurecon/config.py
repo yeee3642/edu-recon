@@ -22,16 +22,17 @@ EXPANSION_STAGES = ["hostdiscovery", "subdomain"]
 # Per-target intensity -> which stages execute vs. only list candidates.
 INTENSITY_STAGES = {
     # passive: never touches auth or injection; benign GETs + fingerprinting only
-    "passive": {"portscan", "webdisco", "exposures", "secrets", "moodle"},
+    "passive": {"shodan", "portscan", "webdisco", "exposures", "secrets", "moodle"},
     # recon: phpcgi + react2shell + webcve + moodle + wordpress + reflected-XSS (benign) execute; sqli/cred are CANDIDATE lists
-    "recon": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
+    "recon": {"shodan", "portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
               "webcve", "moodle", "wp", "xss", "sqli_candidate", "cred_candidate"},
     # full: everything runs for real
-    "full": {"portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
+    "full": {"shodan", "portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
              "webcve", "moodle", "wp", "xss", "sqli", "cred"},
 }
 
-ALL_STAGES = ["portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
+# shodan first: passive intel that can seed ports/services before the active stages
+ALL_STAGES = ["shodan", "portscan", "webdisco", "exposures", "secrets", "phpcgi", "react2shell",
               "webcve", "moodle", "xss", "sqli", "cred", "wp"]
 
 
@@ -44,6 +45,17 @@ class Config:
     http_timeout: int = 12
     user_agent: str = ("Mozilla/5.0 (edu-recon; authorized-exercise) "
                        "AppleWebKit/537.36 Safari/537.36")
+
+    # --- Shodan passive enrichment (needs an API key) ---
+    shodan_enabled: bool = True          # only actually runs when a key is present
+    shodan_api_key: str = ""             # config.yaml, or the SHODAN_API_KEY env var
+    shodan_timeout: int = 25
+    shodan_vuln_findings: bool = False   # Shodan CVEs are version-inferred (like nmap
+    #                                      --script vuln) -> listed as candidates, not
+    #                                      counted as findings unless this is True.
+    shodan_seed_services: bool = False   # merge Shodan-known ports into the service list
+    #                                      (off by default: keeps passive intel from
+    #                                      auto-driving active stages such as hydra/cred).
 
     # --- tool binaries (auto-discovered on PATH if left as name) ---
     nmap_bin: str = "nmap"
@@ -242,6 +254,8 @@ class Config:
         # normalize
         if cfg.intensity not in INTENSITY_STAGES:
             cfg.intensity = "full"
+        if not cfg.shodan_api_key:                       # env fallback; never hard-code a key
+            cfg.shodan_api_key = os.environ.get("SHODAN_API_KEY", "").strip()
         os.makedirs(cfg.workdir, exist_ok=True)
         return cfg
 

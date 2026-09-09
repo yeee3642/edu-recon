@@ -524,8 +524,9 @@ PAGE = r"""<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8">
 <script>
 const SM={critical:{c:'var(--crit)',k:'CRIT',r:5,cvss:9.6},high:{c:'var(--high)',k:'HIGH',r:4,cvss:8.1},
  medium:{c:'var(--med)',k:'MED',r:3,cvss:6.1},low:{c:'var(--low)',k:'LOW',r:2,cvss:4.0},info:{c:'var(--info)',k:'INFO',r:1,cvss:0}};
-const SORD=['portscan','webdisco','exposures','secrets','phpcgi','react2shell','webcve','moodle','xss','sqli','cred','wp'];
-const SMETA={portscan:{s:'PORT',n:'PORTSCAN',cn:'連接埠指紋 + CVE',tool:'nmap -sV -sC --script vuln'},
+const SORD=['shodan','portscan','webdisco','exposures','secrets','phpcgi','react2shell','webcve','moodle','xss','sqli','cred','wp'];
+const SMETA={shodan:{s:'SHDN',n:'SHODAN',cn:'被動情資・埠/CVE/banner',tool:'shodan api'},
+ portscan:{s:'PORT',n:'PORTSCAN',cn:'連接埠指紋 + CVE',tool:'nmap -sV -sC --script vuln'},
  webdisco:{s:'WEB',n:'WEB-DISCO',cn:'目錄爆破・WP 偵測',tool:'dirsearch'},
  exposures:{s:'EXPO',n:'EXPOSURES',cn:'.git/.env/面板/列表',tool:'edu-recon/expose'},
  secrets:{s:'SEC',n:'SECRETS',cn:'金鑰・Swagger/GraphQL',tool:'edu-recon/secrets'},
@@ -537,13 +538,13 @@ const SMETA={portscan:{s:'PORT',n:'PORTSCAN',cn:'連接埠指紋 + CVE',tool:'nm
  sqli:{s:'SQLI',n:'SQLI',cn:'error 快掃・sqlmap',tool:'sqlmap'},
  cred:{s:'CRED',n:'CREDENTIALS',cn:'hydra 弱密碼',tool:'hydra'},
  wp:{s:'WP',n:'WP2SHELL',cn:'WordPress SQLi→shell',tool:'wp2shell'}};
-const ALWAYS=['portscan','webdisco','exposures','secrets','moodle'];
+const ALWAYS=['shodan','portscan','webdisco','exposures','secrets','moodle'];
 const ACTIVE=['phpcgi','react2shell','webcve','xss','sqli','cred','wp'];
 const REMED={cve:'升級受影響元件至修補版本;下架對外 CGI/管理端點。',
  'secret-leak':'移除外露資源、輪換洩漏憑證、加存取控制。','vcs-leak':'移除對外 .git;封鎖點目錄;改部署產物。',
  'backup-leak':'移除備份檔;禁止 web 存取備份路徑。','admin-panel':'面板限內網/VPN;IP 白名單。',
  'dir-listing':'關閉 autoindex (Options -Indexes)。','weak-cred':'停用預設帳號;強密碼 + MFA。',
- 'xss':'輸出編碼;CSP;參數過濾。','sqli':'參數化查詢;最小權限 DB;WAF。','db-cred':'立即輪換外洩的資料庫密碼;設定檔移出 web root;DB 僅限內網連線;改用環境變數/祕密管理。','edtech':'升級至受支援分支;資料目錄移出 web root。','vuln-version':'升級至受支援版本。'};
+ 'xss':'輸出編碼;CSP;參數過濾。','sqli':'參數化查詢;最小權限 DB;WAF。','db-cred':'立即輪換外洩的資料庫密碼;設定檔移出 web root;DB 僅限內網連線;改用環境變數/祕密管理。','shodan-exposure':'限制服務對外暴露(防火牆/IP 白名單/VPN);關閉非必要對外埠。','shodan-vuln':'升級受影響元件;此為 Shodan 版本推斷、需實測確認。','shodan-intel':'外部情資盤點(非漏洞);據此縮小攻擊面。','edtech':'升級至受支援分支;資料目錄移出 web root。','vuln-version':'升級至受支援版本。'};
 let ST={view:'setup',runId:null,run:null,logs:[],logIdx:0,intensity:'full',
  targetsText:'http://127.0.0.1:8081\nhttp://127.0.0.1:8082',
  sev:new Set(['critical','high','medium','low','info']),statF:'all',q:'',sortBy:'sev',
@@ -670,7 +671,7 @@ function vMonitor(){const tg=targets();const c=counts();const done=tg.filter(t=>
   const tot=Object.keys(t.stages||{}).length||1;const rp=Math.round(dn/tot*100);
   const run=Object.values(t.stages||{}).some(s=>s.status==='running');
   const sc=run?'var(--mag)':(t.status==='done'?'var(--y)':'var(--faint)');
-  return `<div style="display:grid;grid-template-columns:190px repeat(12,1fr);gap:3px;margin-bottom:3px;align-items:center">
+  return `<div style="display:grid;grid-template-columns:190px repeat(13,1fr);gap:3px;margin-bottom:3px;align-items:center">
    <div style="padding-right:8px;overflow:hidden">
     <div style="display:flex;align-items:center;gap:6px"><span style="width:5px;height:5px;border-radius:50%;background:${sc};flex:none"></span>
      <span style="font-size:11px;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.host)}</span></div>
@@ -695,7 +696,7 @@ function vMonitor(){const tg=targets();const c=counts();const done=tg.filter(t=>
     <div class="card" style="flex:1;min-height:0;display:flex;flex-direction:column">
      <div class="khead"><span style="font-size:10px;color:var(--dim);letter-spacing:1px">PIPELINE MATRIX · 標的 × STAGE <span class="muted">(點色塊看原始 log)</span></span></div>
      <div style="flex:1;min-height:0;overflow:auto;padding:10px 13px">
-      <div style="display:grid;grid-template-columns:190px repeat(12,1fr);gap:3px;margin-bottom:4px;position:sticky;top:0;background:#101010;padding-bottom:3px"><div></div>${heads}</div>
+      <div style="display:grid;grid-template-columns:190px repeat(13,1fr);gap:3px;margin-bottom:4px;position:sticky;top:0;background:#101010;padding-bottom:3px"><div></div>${heads}</div>
       ${rows||'<div class="muted" style="padding:20px;font-size:11px">展開標的中…</div>'}
      </div></div>
     <div class="logwrap">

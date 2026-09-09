@@ -224,7 +224,9 @@ def cmd_doctor(args) -> int:
     core = {"nmap", "dirsearch", "sqlmap", "hydra"}
     if core & set(missing):
         print(f"\n[!] core scanners missing: {sorted(core & set(missing))}")
-    print(f"\n[i] intensity levels: {', '.join(INTENSITY_STAGES)}")
+    sk = "set" if (cfg.shodan_api_key or "").strip() else "MISSING (set SHODAN_API_KEY)"
+    print(f"\n[i] shodan: {'enabled' if cfg.shodan_enabled else 'disabled'} · api key {sk}")
+    print(f"[i] intensity levels: {', '.join(INTENSITY_STAGES)}")
     print(f"[i] workdir: {cfg.workdir}")
     return 0
 

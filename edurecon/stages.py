@@ -21,6 +21,7 @@ from . import parse, webhttp, webscan
 from . import secrets as secretscan
 from . import cveprobes
 from . import edusys
+from . import shodan as shodan_client
 
 # nmap service name / port  ->  hydra module
 HYDRA_MODULES = {
@@ -197,6 +198,114 @@ def _crtsh(domain: str, cfg: Config, logger) -> set[str]:
 
 # ===================================================================== #
 # per-target stages
+# notable internet-facing services beyond DANGEROUS_PORTS (for Shodan surfacing)
+_SHODAN_NOTABLE = {
+    5601: ("kibana", "medium", "Kibana"), 8086: ("influxdb", "medium", "InfluxDB"),
+    9000: ("portainer", "medium", "Portainer / PHP-FPM"), 5984: ("couchdb", "high", "CouchDB"),
+    15672: ("rabbitmq", "medium", "RabbitMQ management"), 2049: ("nfs", "medium", "NFS"),
+    161: ("snmp", "medium", "SNMP"), 9418: ("git", "medium", "git daemon"),
+    8161: ("activemq", "medium", "ActiveMQ"), 7001: ("weblogic", "high", "WebLogic"),
+}
+
+
+# ===================================================================== #
+def stage_shodan(ctx: StageCtx) -> None:
+    """Passive Shodan enrichment: resolve the host, pull open ports / banners /
+    known CVEs from Shodan's DB (never touches the target). Skips without a key."""
+    cfg = ctx.cfg
+    key = (cfg.shodan_api_key or "").strip()
+    if not cfg.shodan_enabled or not key:
+        ctx.ts.stage("shodan").note = ("no API key (set SHODAN_API_KEY)"
+                                       if cfg.shodan_enabled else "disabled")
+        return
+    host = ctx.ts.host
+    ip = host if _is_ip(host) else shodan_client.resolve(host, key, cfg.shodan_timeout)
+    if not ip:
+        ctx.ts.stage("shodan").note = "host did not resolve via Shodan DNS"
+        return
+    data, err = shodan_client.host_lookup(ip, key, cfg.shodan_timeout)
+    if not data:
+        ctx.ts.stage("shodan").note = f"shodan: {err}"
+        return
+    # persist the raw intel document
+    raw_path = ctx.artifact(f"shodan-{ip}.json")
+    try:
+        with open(raw_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        ctx.record_artifact("shodan", raw_path)
+    except OSError:
+        pass
+
+    s = shodan_client.summarize(data)
+    vulns = shodan_client.all_vulns(s)
+
+    # 1) one info summary of the host's external footprint
+    ctx.finding(stage="shodan", category="shodan-intel",
+                title=(f"Shodan: {len(s['ports'])} open port(s), {len(vulns)} known CVE(s)"
+                       + (f" · {s['org']}" if s['org'] else "")),
+                severity="info", confidence="high",
+                evidence={"ip": ip, "ports": s["ports"], "hostnames": s["hostnames"],
+                          "domains": s["domains"], "org": s["org"], "isp": s["isp"],
+                          "asn": s["asn"], "os": s["os"], "country": s["country"],
+                          "services": [{k: v for k, v in svc.items() if k != "vulns"}
+                                       for svc in s["services"]][:40],
+                          "cve_count": len(vulns), "last_update": s["last_update"]})
+
+    # 2) surface notable internet-facing services (skip DANGEROUS ports when seeding,
+    #    because triage will already flag them from the seeded service list)
+    for svc in s["services"]:
+        p = svc.get("port")
+        if not isinstance(p, int):
+            continue
+        if p in DANGEROUS_PORTS:
+            if cfg.shodan_seed_services:
+                continue
+            _svc, sev, label = DANGEROUS_PORTS[p]
+        elif p in _SHODAN_NOTABLE:
+            _svc, sev, label = _SHODAN_NOTABLE[p]
+        else:
+            continue
+        ctx.finding(stage="shodan", category="shodan-exposure",
+                    title=f"Shodan: {label} internet-facing on {p}",
+                    severity=sev, confidence="medium",
+                    evidence={"ip": ip, "port": p, "product": svc.get("product", ""),
+                              "version": svc.get("version", ""), "banner": svc.get("banner", "")[:300]})
+
+    # 3) known CVEs — version-inferred (like nmap --script vuln): candidates unless opted in
+    if vulns:
+        if cfg.shodan_vuln_findings:
+            for cve in vulns[:60]:
+                ctx.finding(stage="shodan", category="shodan-vuln",
+                            title=f"Shodan flags {cve} (version-inferred)",
+                            severity="high", confidence="low",
+                            evidence={"ip": ip, "cve": cve})
+        else:
+            ctx.finding(stage="shodan", category="candidate",
+                        title=f"Shodan version-inferred CVEs ({len(vulns)}) — verify before trusting",
+                        severity="info", confidence="low",
+                        evidence={"ip": ip, "cves": vulns[:80],
+                                  "note": "Shodan CVEs are banner/version guesses (like nmap "
+                                          "--script vuln); set shodan_vuln_findings=true to raise them"})
+
+    # 4) optionally seed the service inventory so triage/downstream see Shodan ports
+    if cfg.shodan_seed_services and s["services"]:
+        known = {getattr(x, "port", None) for x in ctx.ts.services}
+        for svc in s["services"]:
+            p = svc.get("port")
+            if not isinstance(p, int) or p in known:
+                continue
+            mod = (svc.get("module") or svc.get("product") or "")
+            ctx.ts.services.append(Service(
+                port=p, proto=svc.get("transport", "tcp"),
+                name=(mod.split()[0].lower() if mod else ""),
+                product=svc.get("product", ""), version=svc.get("version", ""),
+                tunnel="ssl" if svc.get("ssl") else "",
+                cpe=svc.get("cpe") if isinstance(svc.get("cpe"), list) else []))
+            known.add(p)
+
+    ctx.ts.stage("shodan").note = f"{len(s['ports'])} port(s) · {len(vulns)} CVE(s) · {s['org'] or 'shodan'}"
+
+
 # ===================================================================== #
 def stage_portscan(ctx: StageCtx) -> None:
     cfg = ctx.cfg
