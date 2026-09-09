@@ -826,9 +826,14 @@ function openPaths(host){const tg=host?targets().filter(t=>t.host===host):target
   if(host||wp.length)lines.push('');}
  if(!n)lines=['# 尚無掃到的路徑。','# webdisco 這輪沒產出(標的無 HTTP、或尚未跑到該 stage)。','# 安裝 dirsearch 可跑完整字典;未安裝時走內建 common-paths 探測。'];
  showShell({mode:'log',title:'網站路徑 · WEB PATHS'+(host?' · '+host:''),sub:n+' paths · dirsearch / 內建探測',cmd:'webdisco',status:'PATHS',statC:'var(--blue)',body:lines.join('\n'),copy:lines.filter(l=>/^\s+\d/.test(l)).map(l=>l.trim().split(/\s+/).pop()).join('\n')});}
+let _shellSig=null;
 function showShell(o){ST._shell=o;renderOverlay();}
 function closeShell(){ST._shell=null;renderOverlay();}
 function renderOverlay(){const el=document.getElementById('overlay');const o=ST._shell;
+ /* 同一個 shell 就別重建 DOM:輪詢 render() 每 2.5s 會呼叫這裡,重建會清掉使用者選取/捲動,
+    害你複製腳本複製到一半被「刷新」掉。只有真的換了 shell(showShell/closeShell)才重畫。 */
+ if(o===_shellSig)return;
+ _shellSig=o;
  if(!o){el.innerHTML='';return;}
  const mt={log:['LOG','mt-log'],dump:['DUMP','mt-dump'],repro:['PoC','mt-poc']}[o.mode||'log'];
  el.innerHTML=`<div class="scrim" onclick="if(event.target===this)closeShell()"><div class="shell">
@@ -851,7 +856,22 @@ function renderShellBody(txt){return (txt||'').split(/\r?\n/).map(l=>{
   if(/^#/.test(l))return `<div style="color:var(--blue)">${esc(l)}</div>`;
   if(/VULNERABLE|\[\+\]/.test(l))return `<div style="color:var(--crit)">${esc(l)}</div>`;
   return `<div style="color:var(--soft)">${esc(l)}</div>`;}).join('');}
-function shellCopy(){const o=ST._shell;if(o&&o.copy&&navigator.clipboard){navigator.clipboard.writeText(o.copy);toast(o.mode==='dump'?'已複製機敏內容,注意保管':'已複製');}}
+function shellCopy(){const o=ST._shell;if(!o||!o.copy)return;
+ copyText(o.copy,o.mode==='dump'?'已複製機敏內容,注意保管':'已複製');}
+/* navigator.clipboard 只在安全情境(https / localhost)才有;這工具常跑在 http://<區網IP>:8770,
+   那裡 clipboard API 是 undefined。所以一律備援 execCommand,並回報成敗,不再無聲失敗。 */
+function copyText(text,okMsg){
+ const done=ok=>toast(ok?(okMsg||'已複製'):'⚠ 複製失敗,請手動選取後 Ctrl+C');
+ if(navigator.clipboard&&navigator.clipboard.writeText){
+  navigator.clipboard.writeText(text).then(()=>done(true),()=>done(fallbackCopy(text)));
+ }else done(fallbackCopy(text));}
+function fallbackCopy(text){try{
+  const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');
+  ta.style.cssText='position:fixed;top:-1000px;left:-1000px;opacity:0';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{ta.setSelectionRange(0,text.length);}catch(_){}
+  let ok=false;try{ok=document.execCommand('copy');}catch(_){}
+  ta.remove();return ok;}catch(e){return false;}}
 function evProof(f){const ev=f.evidence||{};if(!ST.opt.plaintext&&isSensitive(f)){const c={};for(const [k,v] of Object.entries(ev))c[k]=(typeof v==='string')?maskText(v):v;return c;}return ev;}
 function shellDl(){const o=ST._shell;if(o&&o.dl)dlText(o.dl.name,o.dl.text);}
 function dlText(name,text){const b=new Blob([text],{type:'text/plain'});const u=URL.createObjectURL(b);
