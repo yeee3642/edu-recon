@@ -83,6 +83,11 @@ class Config:
     nmap_timing: str = "-T4"
     nmap_default_scripts: bool = True   # -sC
     nmap_vuln_scripts: bool = True      # --script vuln (best-effort CVE hints)
+    nmap_vuln_findings: bool = False    # promote NSE vuln output to findings?
+    #   OFF (default): nmap's "VULNERABLE"/CVE hits are version/banner inference with no
+    #   SAFE-CHECK oracle, so they don't count as findings -- the raw output still lands
+    #   in the nmap.xml / nmap.stdout.log artifacts for human review. Confirmed CVEs come
+    #   from the oracle-backed stages (webcve/phpcgi/react2shell/moodle) instead.
 
     # --- web discovery (dirsearch) ---
     web_wordlist: str = os.path.join(ROOT, "wordlists", "web-common.txt")

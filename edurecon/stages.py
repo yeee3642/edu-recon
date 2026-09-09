@@ -228,13 +228,16 @@ def stage_portscan(ctx: StageCtx) -> None:
         entry = next(iter(parsed.values()))
     if entry:
         ctx.ts.services = entry["services"]
-        # host-level nse scripts -> attach to a synthetic note via findings later
-        for sid, out in entry.get("hostscripts", {}).items():
-            if "VULNERABLE" in out or "CVE-" in out:
-                ctx.finding(stage="portscan", category="nmap-vuln",
-                            title=f"nmap {sid} flagged VULNERABLE",
-                            severity="high", confidence="medium",
-                            evidence={"script": sid, "output": out[:800]})
+        # host-level nse vuln output -> finding only if opted in (default off); nmap's
+        # version-inferred "VULNERABLE"/CVE hits are not oracle-verified, so by default
+        # they stay in the nmap.xml/stdout artifact and are not counted as findings.
+        if cfg.nmap_vuln_findings:
+            for sid, out in entry.get("hostscripts", {}).items():
+                if "VULNERABLE" in out or "CVE-" in out:
+                    ctx.finding(stage="portscan", category="nmap-vuln",
+                                title=f"nmap {sid} flagged VULNERABLE",
+                                severity="high", confidence="medium",
+                                evidence={"script": sid, "output": out[:800]})
     ctx.ts.stage("portscan").note = f"{len(ctx.ts.services)} open port(s)"
 
 

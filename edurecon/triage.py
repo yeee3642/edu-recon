@@ -33,12 +33,12 @@ SENSITIVE_SUFFIX = (".sql", ".bak", ".old", ".swp", ".zip", ".tar.gz", ".tgz",
 
 
 def triage_target(ts: TargetState, cfg: Config) -> None:
-    _from_services(ts)
+    _from_services(ts, cfg)
     _from_webpaths(ts)
     _dedupe_and_rank(ts)
 
 
-def _from_services(ts: TargetState) -> None:
+def _from_services(ts: TargetState, cfg: Config) -> None:
     existing = {(f.category, f.evidence.get("port")) for f in ts.findings}
     for s in ts.services:
         if s.port in DANGEROUS_PORTS and ("dangerous-port", s.port) not in existing:
@@ -47,14 +47,16 @@ def _from_services(ts: TargetState) -> None:
                 target=ts.host, stage="triage", category="dangerous-port",
                 title=title, severity=sev, confidence="medium",
                 evidence={"port": s.port, "service": s.name, "banner": s.banner()}))
-        # per-port NSE vuln output
-        for sid, out in s.scripts.items():
-            if "VULNERABLE" in out or "CVE-" in out:
-                ts.findings.append(Finding(
-                    target=ts.host, stage="triage", category="nmap-vuln",
-                    title=f"nmap {sid} flagged VULNERABLE on {s.port}",
-                    severity="high", confidence="medium",
-                    evidence={"port": s.port, "script": sid, "output": out[:800]}))
+        # per-port NSE vuln output -> finding only if opted in (default off); nmap's
+        # version-inferred hits have no SAFE-CHECK oracle, so they are not counted.
+        if cfg.nmap_vuln_findings:
+            for sid, out in s.scripts.items():
+                if "VULNERABLE" in out or "CVE-" in out:
+                    ts.findings.append(Finding(
+                        target=ts.host, stage="triage", category="nmap-vuln",
+                        title=f"nmap {sid} flagged VULNERABLE on {s.port}",
+                        severity="high", confidence="medium",
+                        evidence={"port": s.port, "script": sid, "output": out[:800]}))
         # anonymous FTP
         if s.name.lower() == "ftp":
             anon = s.scripts.get("ftp-anon", "")
